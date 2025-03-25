@@ -736,6 +736,7 @@ try {
     if ($service.Status -eq 'Running') {
         Write-TaskComplete
         Write-Log "Windows Update service re-enabled"
+        IRM "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Update_Windows.ps1" iex
     } else {
         Write-TaskFailed
         Write-Log "Failed to re-enable Windows Update service"
