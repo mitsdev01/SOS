@@ -199,7 +199,7 @@ Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/mitsdev0
 ############################################################################################################
 # Start baseline
 [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-[Console]::Write("`n`n")
+[Console]::Write("`n")
 Write-Delayed "Starting workstation baseline..." -NewLine:$false
 [Console]::Write("`n")
 [Console]::ResetColor() 
