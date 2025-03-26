@@ -1126,34 +1126,6 @@ if (Test-Windows10) {
 #                                                                                                          #
 ############################################################################################################
 #region Baseline Cleanup
-# Re-enable Windows Update
-
-<# Version 2.0
-Write-Delayed "Re-enabling Windows Update..." -NewLine:$false
-try {
-    # Set the startup type of the Windows Update service back to automatic
-    Set-Service -Name wuauserv -StartupType Automatic
-    
-    # Start the Windows Update service
-    Start-Service -Name wuauserv
-    
-    # Get the current status of the Windows Update service
-    $service = Get-Service -Name wuauserv
-    
-    # Check if the service is running
-    if ($service.Status -eq 'Running') {
-        Write-TaskComplete
-        Write-Log "Windows Update service re-enabled"
-        IRM "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Update_Windows.ps1" | iex
-    } else {
-        Write-TaskFailed
-        Write-Log "Failed to re-enable Windows Update service"
-    }
-} catch {
-    Write-Host "An error occurred: $_" -ForegroundColor Red
-    Write-Log "Error re-enabling Windows Update: $_"
-}
-#>
 
 # Enable and start Windows Update Service
 Write-Delayed "Enabling Windows Update Service..." -NewLine:$false
