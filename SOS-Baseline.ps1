@@ -159,6 +159,34 @@ function Show-SpinningWait {
     return $result
 }
 
+function Is-Windows11 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 11
+    return $osVersion -ge "10.0.22000" -and $osProduct -like "*Windows 11*"
+}
+
+function Is-Windows10 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 10
+    return $osVersion -lt "10.0.22000" -and $osProduct -like "*Windows 10*"
+}
+
+function Test-DattoInstallation {
+    $service = Get-Service $agentName -ErrorAction SilentlyContinue
+    $serviceExists = $null -ne $service
+    $filesExist = Test-Path $agentPath
+    
+    return @{
+        ServiceExists = $serviceExists
+        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
+        FilesExist = $filesExist
+    }
+}
+
 #endregion Functions
 
 # Print Script Title
@@ -192,9 +220,6 @@ Start-Sleep -Seconds 2
 Write-Log "Automated workstation baseline has started"
 
 #region WakeLock
-# ---------------------------------------------------------------------
-# Setup WakeLock to prevent system from sleeping
-# ---------------------------------------------------------------------
 try {
     $computerSystem = Get-CimInstance -ClassName CIM_ComputerSystem
     $pcSystemType = $computerSystem.PCSystemType
@@ -253,19 +278,6 @@ $file = "$TempFolder\AgentSetup_Standard+Office+Systems+MITS.exe"
 $agentName = "CagService"
 $agentPath = "C:\Program Files (x86)\CentraStage"
 $installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/b1f0bb64-e008-44e9-8260-2c5039cdd437"
-
-# Function to validate installation
-function Test-DattoInstallation {
-    $service = Get-Service $agentName -ErrorAction SilentlyContinue
-    $serviceExists = $null -ne $service
-    $filesExist = Test-Path $agentPath
-    
-    return @{
-        ServiceExists = $serviceExists
-        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
-        FilesExist = $filesExist
-    }
-}
 
 # Check for existing Datto RMM agent
 $installStatus = Test-DattoInstallation
@@ -1079,10 +1091,12 @@ try {
 #                                                                                                          #
 ############################################################################################################
 #region Bloatware Cleanup
-# Trigger MITS Debloat for Windows 11
-if (Test-Windows11) {
+
+
+# Check if the OS is Windows 11
+if (Is-Windows11) {
     try {
-        $Win11DebloatURL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/MITS-Debloat.zip"
+        $Win11DebloatURL = "https://axcientrestore.blob.core.windows.net/win11/MITS-Debloat.zip"
         $Win11DebloatFile = "c:\temp\MITS-Debloat.zip"
         Invoke-WebRequest -Uri $Win11DebloatURL -OutFile $Win11DebloatFile -UseBasicParsing -ErrorAction Stop 
         Start-Sleep -seconds 2
@@ -1098,10 +1112,15 @@ if (Test-Windows11) {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
     }
 }
+else {
+    #Write-Log "This script is intended to run only on Windows 11."
+}
 
+
+# Function to check if the OS is Windows 10
 
 # Trigger MITS Debloat for Windows 10
-if (Test-Windows10) {
+if (Is-Windows10) {
     try {
         $MITSDebloatURL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/MITS-Debloat.zip"
         $MITSDebloatFile = "c:\temp\MITS-Debloat.zip"
@@ -1119,6 +1138,7 @@ if (Test-Windows10) {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
     }
 }
+
 
 
 ############################################################################################################
