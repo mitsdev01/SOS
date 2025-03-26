@@ -2,7 +2,7 @@
 #                                        Adobe Acrobat Installation                                        #
 #                                                                                                          #
 ############################################################################################################
-# Acrobat Installation
+#region Acrobat Installation
 # Define the URL and file path for the Acrobat Reader installer
 $URL = "https://axcientrestore.blob.core.windows.net/win11/AcroRdrDC2500120432_en_US.exe"
 $AcroFilePath = "C:\temp\AcroRdrDC2500120432_en_US.exe"
@@ -58,9 +58,19 @@ try {
         
         # Verify installation
         $acrobatPath = "${env:ProgramFiles(x86)}\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe"
-        if (Test-Path $acrobatPath) {
+        $acrobatInstalled = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
+                                            HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+                             Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
+        
+        if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
             Write-Host "Adobe Acrobat Reader installation completed successfully" -ForegroundColor Green
         } else {
+            if (-not (Test-Path $acrobatPath)) {
+                Write-Host "Adobe Acrobat Reader executable not found" -ForegroundColor Yellow
+            }
+            if (-not $acrobatInstalled) {
+                Write-Host "Adobe Acrobat Reader not found in installed applications registry" -ForegroundColor Yellow
+            }
             Write-Host "Adobe Acrobat Reader installation may not have completed properly" -ForegroundColor Yellow
         }
     } else {
@@ -72,7 +82,7 @@ try {
     # Cleanup
     $ProgressPreference = 'Continue'
     if (Test-Path $AcroFilePath) {
-        Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue
+        #Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue
         Write-Host "Cleaned up installer file"
     }
 }

@@ -921,7 +921,7 @@ Write-Log "Disabled unnecessary scheduled tasks"
 #                                          Office 365 Installation                                         #
 #                                                                                                          #
 ############################################################################################################
-#region Office 365 Install
+#
 # Install Office 365
 $O365 = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
                              HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
@@ -947,36 +947,29 @@ if ($O365) {
     $FileSize = (Get-Item $OfficePath).Length
     $ExpectedSize = 7733536 # in bytes
     if ($FileSize -eq $ExpectedSize) {
-        # Use the spinning indicator function for Office installation
-        Show-SpinningWait -Message "Installing Microsoft Office 365..." -ScriptBlock {
+        Write-Delayed "Installing Microsoft Office 365..." -NewLine:$false
             taskkill /f /im OfficeClickToRun.exe *> $null
             taskkill /f /im OfficeC2RClient.exe *> $null
             Start-Sleep -Seconds 10
             Start-Process -FilePath $OfficePath -Wait
             Start-Sleep -Seconds 15
-            
-            # Return the installation status
-            if (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "Microsoft 365 Apps for enterprise - en-us"}) {
-                Write-Log "Office 365 Installation Completed Successfully."
-                return $true
-            } else {
-                Write-Log "Office 365 installation failed."
-                return $false
-            }
-        } | Out-Null
-        
-        # Check the installation result
         if (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "Microsoft 365 Apps for enterprise - en-us"}) {
+            Write-Log "Office 365 Installation Completed Successfully."
+            [Console]::ForegroundColor = [System.ConsoleColor]::Green
+            [Console]::Write(" done.")
+            [Console]::ResetColor()
+            [Console]::WriteLine()  
             Start-Sleep -Seconds 10
             taskkill /f /im OfficeClickToRun.exe *> $null
             taskkill /f /im OfficeC2RClient.exe *> $null
             Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
-        } else {
+            } else {
+            Write-Log "Office 365 installation failed."
             [Console]::ForegroundColor = [System.ConsoleColor]::Red
             [Console]::Write("`nMicrosoft Office 365 installation failed.")
             [Console]::ResetColor()
             [Console]::WriteLine()  
-        }   
+            }   
     }
     else {
         # Report download error
@@ -1006,7 +999,7 @@ if (-not (Test-Path "C:\temp")) {
 }
 
 # Download the Acrobat Reader installer
-$ProgressPreference = 'SilentlyContinue'  # Hide progress bar for faster downloads
+#$ProgressPreference = 'SilentlyContinue'  # Hide progress bar for faster downloads
 try {
     $response = Invoke-WebRequest -Uri $URL -Method Head -ErrorAction Stop
     $fileSize = $response.Headers['Content-Length']
@@ -1050,9 +1043,19 @@ try {
         
         # Verify installation
         $acrobatPath = "${env:ProgramFiles(x86)}\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe"
-        if (Test-Path $acrobatPath) {
+        $acrobatInstalled = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
+                                            HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+                             Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
+        
+        if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
             Write-Host "Adobe Acrobat Reader installation completed successfully" -ForegroundColor Green
         } else {
+            if (-not (Test-Path $acrobatPath)) {
+                Write-Host "Adobe Acrobat Reader executable not found" -ForegroundColor Yellow
+            }
+            if (-not $acrobatInstalled) {
+                Write-Host "Adobe Acrobat Reader not found in installed applications registry" -ForegroundColor Yellow
+            }
             Write-Host "Adobe Acrobat Reader installation may not have completed properly" -ForegroundColor Yellow
         }
     } else {
@@ -1062,7 +1065,7 @@ try {
     Write-Host "Error: $_" -ForegroundColor Red
 } finally {
     # Cleanup
-    $ProgressPreference = 'Continue'
+    #$ProgressPreference = 'Continue'
     if (Test-Path $AcroFilePath) {
         Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue
         Write-Host "Cleaned up installer file"
