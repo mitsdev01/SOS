@@ -159,153 +159,6 @@ function Show-SpinningWait {
     return $result
 }
 
-# BitLocker configuration logic
-function Configure-BitLocker {
-    try {
-        # Create the recovery key
-        Write-Host "Adding recovery password protector..." -NoNewline
-        $recoveryResult = Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -ErrorAction Stop
-        if ($null -eq $recoveryResult) {
-            throw "Failed to add recovery password protector."
-        }
-        Write-Host " done." -ForegroundColor Green
-        
-        # Add TPM key
-        Write-Host "Adding TPM protector..." -NoNewline
-        $tpmResult = Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -ErrorAction Stop
-        if ($null -eq $tpmResult) {
-            throw "Failed to add TPM protector."
-        }
-        Write-Host " done." -ForegroundColor Green
-        
-        # Wait for the protectors to take effect
-        Write-Host "Waiting for protectors to initialize (15 seconds)..." -NoNewline
-        Start-Sleep -Seconds 15
-        Write-Host " done." -ForegroundColor Green
-        
-        # Enable Encryption
-        Write-Host "Starting BitLocker encryption..." -NoNewline
-        $encryptResult = Start-Process 'manage-bde.exe' -ArgumentList "-on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait -PassThru
-        if ($encryptResult.ExitCode -ne 0) {
-            throw "Failed to start BitLocker encryption. Exit code: $($encryptResult.ExitCode)"
-        }
-        Write-Host " done." -ForegroundColor Green
-        
-        # Backup the Recovery to AD
-        Write-Host "Backing up recovery key to Active Directory..." -NoNewline
-        $RecoveryKeyGUID = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | 
-                           Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword'} | 
-                           Select-Object -ExpandProperty KeyProtectorID -First 1
-        
-        if ($RecoveryKeyGUID) {
-            manage-bde.exe -protectors $env:SystemDrive -adbackup -id $RecoveryKeyGUID | Out-Null
-            Write-Host " done." -ForegroundColor Green
-        }
-        else {
-            Write-Host " failed (Recovery key GUID not found)." -ForegroundColor Yellow
-            Write-Log "Warning: Could not backup recovery key to AD - Key GUID not found"
-        }
-        
-        # Write Recovery Key to a file
-        Write-Host "Saving recovery key to file..." -NoNewline
-        manage-bde -protectors $env:SystemDrive -get | Out-File "$outputDirectory\$env:computername-BitLocker.txt" -Force
-        Write-Host " done." -ForegroundColor Green
-        
-        # Monitor encryption progress
-        Monitor-BitLockerEncryption
-        
-        # Verify and report final status
-        Verify-BitLockerStatus
-        
-    }
-    catch {
-        Write-Host "`nError configuring BitLocker: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "BitLocker configuration error: $($_.Exception.Message)"
-    }
-}
-# Monitor Encryption
-function Monitor-BitLockerEncryption {
-    Write-Host "Monitoring encryption progress..."
-    $encryptionComplete = $false
-    $consecutiveSuccesses = 0
-    
-    do {
-        try {
-            Start-Sleep -Seconds 2
-            $status = manage-bde -status $env:SystemDrive | Out-String
-            
-            # More robust pattern matching
-            if ($status -match "Percentage\s+Encrypted\s*:\s*([\d\.]+)%") {
-                $percentageEncrypted = $matches[1].Trim()
-                Write-Progress -Activity "Encrypting Drive $env:SystemDrive" -Status "$percentageEncrypted% Complete" -PercentComplete ([double]$percentageEncrypted)
-                
-                # Consider encryption complete when it reaches 100%
-                if ([double]$percentageEncrypted -ge 100) {
-                    $consecutiveSuccesses++
-                    if ($consecutiveSuccesses -ge 3) {
-                        $encryptionComplete = $true
-                    }
-                }
-                else {
-                    $consecutiveSuccesses = 0
-                }
-            }
-            else {
-                Write-Host "Warning: Could not parse encryption percentage." -ForegroundColor Yellow
-            }
-            
-            # Also check for "Protection On" status
-            if ($status -match "Protection\s+On" -and $status -match "Encryption\s+Method\s*:") {
-                $encryptionComplete = $true
-            }
-            
-        }
-        catch {
-            Write-Host "Warning: Error checking BitLocker status: $($_.Exception.Message)" -ForegroundColor Yellow
-            Start-Sleep -Seconds 5
-        }
-        
-    } until ($encryptionComplete)
-    
-    Write-Progress -Activity "Encrypting Drive $env:SystemDrive" -Completed
-    Write-Host "Encryption of $env:SystemDrive is complete." -ForegroundColor Green
-}
-
-# Verify BitLocker status
-function Verify-BitLockerStatus {
-    # Verify volume key protector exists
-    $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
-    if ($BitLockerVolume.KeyProtector -and $BitLockerVolume.ProtectionStatus -eq 'On') {
-        Write-Delayed "BitLocker disk encryption configured successfully." -NewLine:$true
-        Write-Log "BitLocker disk encryption configured successfully"
-        
-        $recoveryProtector = $BitLockerVolume.KeyProtector | 
-                            Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword'} | 
-                            Select-Object -First 1
-        
-        if ($recoveryProtector) {
-            Write-Delayed "Recovery ID:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $($recoveryProtector.KeyProtectorId.Trim('{', '}'))"
-            
-            Write-Delayed "Recovery Password:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $($recoveryProtector.RecoveryPassword)"
-            
-            Write-Log "BitLocker recovery information saved to $outputDirectory\$env:computername-BitLocker.txt"
-        }
-        else {
-            Write-Host "Warning: Recovery protector not found." -ForegroundColor Yellow
-            Write-Log "Warning: BitLocker recovery protector not found"
-        }
-    }
-    else {
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        [Console]::Write("BitLocker disk encryption is not properly configured.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        Write-Log "BitLocker disk encryption is not properly configured"
-    }
-}
-
 #endregion Functions
 
 # Print Script Title
@@ -672,179 +525,109 @@ Write-Log "Synced system clock"
 #                                                                                                          #
 ############################################################################################################
 #region Capability Check
-# Check Bitlocker Compatibility with improved error reporting
+# Check Bitlocker Compatibility -v2
 $WindowsVer = Get-WmiObject -Query 'select * from Win32_OperatingSystem where (Version like "6.2%" or Version like "6.3%" or Version like "10.0%") and ProductType = "1"' -ErrorAction SilentlyContinue
 $TPM = Get-WmiObject -Namespace root\cimv2\security\microsofttpm -Class Win32_Tpm -ErrorAction SilentlyContinue
 $BitLockerReadyDrive = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction SilentlyContinue
 
-# Begin with detailed requirement checks
-$requirementsMet = $true
-$missingRequirements = @()
-
-if (-not $WindowsVer) {
-    $requirementsMet = $false
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    $missingRequirements += "Unsupported Windows version: $($osInfo.Caption) $($osInfo.Version)"
-    Write-Log "BitLocker requirement not met: Unsupported Windows version detected - $($osInfo.Caption) $($osInfo.Version)"
-}
-
-if (-not $TPM) {
-    $requirementsMet = $false
-    $missingRequirements += "TPM not available or not functioning"
-    Write-Log "BitLocker requirement not met: TPM not available or not functioning"
-}
-
-if (-not $BitLockerReadyDrive) {
-    $requirementsMet = $false
-    $missingRequirements += "Drive not compatible with BitLocker"
-    Write-Log "BitLocker requirement not met: Drive not compatible with BitLocker"
-}
-
-if ($requirementsMet) {
+if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
     # Check if Bitlocker is already configured on C:
     $BitLockerStatus = Get-BitLockerVolume -MountPoint $env:SystemDrive
-    
     # Ensure the output directory exists
     $outputDirectory = "C:\temp"
     if (-not (Test-Path -Path $outputDirectory)) {
         New-Item -Path $outputDirectory -ItemType Directory | Out-Null
     }
-    
-    # Check if we're resuming an interrupted encryption
-    $resumingEncryption = $false
-    if ($BitLockerStatus.ProtectionStatus -eq 'Off' -and $BitLockerStatus.VolumeStatus -eq 'EncryptionInProgress') {
-        $resumingEncryption = $true
-        Write-Delayed "Resuming interrupted BitLocker encryption..." -NewLine:$true
-        Write-Log "Resuming previously interrupted BitLocker encryption"
-    }
-    
-    if ($BitLockerStatus.ProtectionStatus -eq 'On' -and -not $resumingEncryption) {
+    if ($BitLockerStatus.ProtectionStatus -eq 'On') {
         # Bitlocker is already configured
-        [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-        Write-Delayed "BitLocker is already configured on $env:SystemDrive - " -NewLine:$false
+        [Console]::ForegroundColor = [System.ConsoleColor]::Red
+        Write-Delayed "Bitlocker is already configured on $env:SystemDrive - " -NewLine:$false
         [Console]::ResetColor()
 
-        # Improved prompt with more robust timeout handling
+        # Setup for non-blocking read with timeout
         $timeoutSeconds = 10
-        $prompt = "Do you want to skip BitLocker configuration? (Y/N, timeout in ${timeoutSeconds}s): "
-        
-        Write-Host $prompt -NoNewline -ForegroundColor Yellow
-        
-        $startTime = Get-Date
+        $endTime = (Get-Date).AddSeconds($timeoutSeconds)
         $userResponse = $null
-        
-        # Clear any pending keys in the input buffer
-        while ([Console]::KeyAvailable) { $null = [Console]::ReadKey($true) }
-        
-        do {
+
+        [Console]::ForegroundColor = [System.ConsoleColor]::Red
+        Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
+        [Console]::ResetColor()
+
+        while ($true) {
             if ([Console]::KeyAvailable) {
                 $key = [Console]::ReadKey($true)
-                # Only accept Y, y, N, or n
-                if ('y', 'Y', 'n', 'N' -contains $key.KeyChar) {
+                if ($key.KeyChar -match '^[ynYN]$') {
                     $userResponse = $key.KeyChar
-                    Write-Host $key.KeyChar
                     break
                 }
+            } elseif ((Get-Date) -ge $endTime) {
+                Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
+                Write-Host -ForegroundColor Green " done."
+                $userResponse = 'y' # Assume 'yes' to skip if no response
+                break
             }
-            Start-Sleep -Milliseconds 100
-            $elapsedTime = ((Get-Date) - $startTime).TotalSeconds
-            
-            # Update countdown every second
-            if ([Math]::Floor($elapsedTime) -ne [Math]::Floor($elapsedTime - 0.1)) {
-                $remainingTime = $timeoutSeconds - [Math]::Floor($elapsedTime)
-                if ($remainingTime -ge 0) {
-                    Write-Host "`r$prompt$remainingTime seconds remaining     " -NoNewline -ForegroundColor Yellow
-                }
-            }
-            
-        } until ($elapsedTime -ge $timeoutSeconds)
-        
-        # If no response or response is Y/y, skip reconfiguration
-        if ($null -eq $userResponse -or $userResponse -in ('y', 'Y')) {
-            if ($null -eq $userResponse) {
-                Write-Host "`r$prompt" -NoNewline -ForegroundColor Yellow
-                Write-Host "Y (timeout)" -ForegroundColor Green
-            }
-            Write-Host "Skipping BitLocker reconfiguration." -ForegroundColor Green
-            Write-Log "BitLocker already configured, skipping reconfiguration (user choice or timeout)"
+            Start-Sleep -Milliseconds 500
         }
-        else {
-            # User chose to reconfigure BitLocker
-            Write-Host "Reconfiguring BitLocker encryption..."
-            Write-Log "User chose to reconfigure BitLocker encryption"
-            
+
+        if ($userResponse -ine 'y') {
             # Disable BitLocker
-            Write-Host "Disabling current BitLocker encryption..." -NoNewline
-            $result = manage-bde -off $env:SystemDrive 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host " failed!" -ForegroundColor Red
-                Write-Host "Error: $result" -ForegroundColor Red
-                Write-Log "Failed to disable BitLocker: $result"
-                return
-            }
-            Write-Host " done." -ForegroundColor Green
-            
-            # Monitor decryption progress with improved pattern matching
-            Write-Host "Monitoring decryption progress..."
+            manage-bde -off $env:SystemDrive | Out-Null
+
+            # Monitor decryption progress
             do {
-                Start-Sleep -Seconds 2
-                $status = manage-bde -status $env:SystemDrive | Out-String
-                
-                # More robust pattern matching
-                if ($status -match "Percentage\s+Encrypted\s*:\s*([\d\.]+)%") {
-                    $percentageEncrypted = $matches[1].Trim()
-                    $percentageRemaining = [math]::Round(100 - [double]$percentageEncrypted, 1)
-                    Write-Progress -Activity "Decrypting Drive $env:SystemDrive" -Status "$percentageRemaining% remaining" -PercentComplete ([double]$percentageRemaining)
-                }
-                else {
-                    Write-Host "Warning: Could not parse encryption percentage." -ForegroundColor Yellow
-                }
-                
-                # Check if decryption is complete
-                if ($status -match "Percentage\s+Encrypted\s*:\s*0\.0%") {
-                    break
-                }
-                
-            } until ($status -match "Protection\s+Off" -and $status -match "Percentage\s+Encrypted\s*:\s*0\.0%")
-            
-            Write-Progress -Activity "Decrypting Drive $env:SystemDrive" -Completed
-            Write-Host "Decryption of $env:SystemDrive is complete." -ForegroundColor Green
-            
-            # Proceed with BitLocker configuration (same for both new and reconfiguration)
-            Configure-BitLocker
+                $status = manage-bde -status $env:SystemDrive
+                $percentageEncrypted = ($status | Select-String -Pattern "Percentage Encrypted:.*").ToString().Split(":")[1].Trim()
+                Write-Host "`rCurrent decryption progress: $percentageEncrypted" -NoNewline
+                Start-Sleep -Seconds 1
+            } until ($percentageEncrypted -eq "0.0%")
+            Write-Host "`nDecryption of $env:SystemDrive is complete."
+            # Reconfigure BitLocker
+            Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$true
+            Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -WarningAction SilentlyContinue | Out-Null
+            Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -WarningAction SilentlyContinue | Out-Null
+            Start-Process 'manage-bde.exe' -ArgumentList " -on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait | Out-Null
+            # Verify volume key protector exists
+            $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
+            if ($BitLockerVolume.KeyProtector) {
+                Write-Host "Bitlocker disk encryption configured successfully."
+            } else {
+                Write-Host "Bitlocker disk encryption is not configured."
+            }
+        }
+    } else {
+        # Bitlocker is not configured
+        Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$true
+        # Create the recovery key
+        Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -WarningAction SilentlyContinue | Out-Null
+        # Add TPM key
+        Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -WarningAction SilentlyContinue | Out-Null
+        Start-Sleep -Seconds 15 # Wait for the protectors to take effect
+        # Enable Encryption
+        Start-Process 'manage-bde.exe' -ArgumentList "-on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait | Out-Null
+        # Backup the Recovery to AD
+        $RecoveryKeyGUID = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | Where-Object {$_.KeyProtectortype -eq 'RecoveryPassword'} | Select-Object -ExpandProperty KeyProtectorID
+        manage-bde.exe -protectors $env:SystemDrive -adbackup -id $RecoveryKeyGUID | Out-Null
+        # Write Recovery Key to a file
+        manage-bde -protectors C: -get | Out-File "$outputDirectory\$env:computername-BitLocker.txt"
+        # Verify volume key protector exists
+        $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
+        if ($BitLockerVolume.KeyProtector) {
+            Write-Delayed "Bitlocker disk encryption configured successfully." -NewLine:$true
+            Write-Delayed "Recovery ID:" -NewLine:$false
+            Write-Host -ForegroundColor Cyan " $($BitLockerVolume.KeyProtector | Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | ForEach-Object { $_.KeyProtectorId.Trim('{', '}') })"
+            Write-Delayed "Recovery Password:" -NewLine:$false
+            Write-Host -ForegroundColor Cyan " $($BitLockerVolume.KeyProtector | Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | Select-Object -ExpandProperty RecoveryPassword)"
+        } else {
+            [Console]::ForegroundColor = [System.ConsoleColor]::Red
+            [Console]::Write("Bitlocker disk encryption is not configured.")
+            [Console]::ResetColor()
+            [Console]::WriteLine()  
         }
     }
-    elseif ($resumingEncryption) {
-        # Resume interrupted encryption
-        Write-Delayed "Resuming BitLocker encryption process..." -NewLine:$true
-        
-        # Simply continue the encryption
-        manage-bde -resume $env:SystemDrive | Out-Null
-        
-        # Monitor encryption progress
-        Monitor-BitLockerEncryption
-        
-        # Verify and report final status
-        Verify-BitLockerStatus
-    }
-    else {
-        # BitLocker is not configured
-        Write-Delayed "Configuring BitLocker Disk Encryption..." -NewLine:$true
-        Write-Log "Starting BitLocker configuration"
-        
-        # Call to our encapsulated BitLocker configuration
-        Configure-BitLocker
-    }
-}
-else {
-    # Requirements not met, display detailed error
-    Write-Host "BitLocker Drive Encryption requirements not met:" -ForegroundColor Red
-    foreach ($requirement in $missingRequirements) {
-        Write-Host " - $requirement" -ForegroundColor Red
-    }
-    Write-Host "BitLocker encryption configuration skipped." -ForegroundColor Yellow
-    Write-Log "Skipping BitLocker Drive Encryption due to missing requirements: $($missingRequirements -join ', ')"
-    Start-Sleep -Seconds 2
+} else {
+    Write-Warning "Skipping Bitlocker Drive Encryption due to device not meeting hardware requirements."
+    Write-Log "Skipping Bitlocker Drive Encryption due to device not meeting hardware requirements."
+    Start-Sleep -Seconds 1
 }
 #region Configure Bitlocker
 
