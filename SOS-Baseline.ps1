@@ -1152,7 +1152,7 @@ if (Is-Windows10) {
 #                                                                                                          #
 ############################################################################################################
 #region Baseline Cleanup
-
+Start-Sleep -seconds 60
 # Enable and start Windows Update Service
 Write-Delayed "Enabling Windows Update Service..." -NewLine:$false
 Set-Service -Name wuauserv -StartupType Manual
