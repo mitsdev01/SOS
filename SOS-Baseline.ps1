@@ -1193,7 +1193,6 @@ function Set-UsoSvcAutomatic {
 Write-Delayed "Checking for Windows Updates..." -NewLine:$false
 Set-UsoSvcAutomatic
 $ProgressPreference = 'SilentlyContinue'
-#Invoke-WebRequest -Uri "https://raw.githubusercontent.com/wju10755/Baseline/main/Update_Windows-v3.ps1" -OutFile "c:\temp\update_windows.ps1"
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Update_Windows.ps1" -OutFile "c:\temp\update_windows.ps1"
 
 
