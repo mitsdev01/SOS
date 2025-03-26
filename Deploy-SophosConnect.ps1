@@ -2,9 +2,9 @@
 
 # Define variables
 
-$installerUrl = "https://servername.com/SophosConnect_2.3.27.msi"  # Replace with your MSI URL
+$installerUrl = "https://SophosServerName.com/SophosConnect_2.3.27.msi"  # Replace with your MSI URL
 
-$configUrl = "https://servername.com/vpn_config.scx"              # Replace with your .scx URL
+$configUrl = "https://SophosServerName.com/vpn_config.scx"              # Replace with your .scx URL
 
 $installerPath = "c:\temp\SophosConnect.msi"
 

@@ -75,191 +75,6 @@ function Test-Win11 {
     return $osInfo.Version -ge "10.0.22000" -and $osInfo.Caption -like "*Windows 11*"
 }
 
-function Install-Office365 {
-    [CmdletBinding()]
-    param (
-        [string]$DownloadUrl = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/OfficeSetup.exe",
-        [string]$DownloadPath = "C:\temp\OfficeSetup.exe",
-        [int]$TimeoutSeconds = 600,
-        [switch]$Force
-    )
-
-    Write-Log "Starting Office 365 installation process"
-    
-    # Check for existing Office installation
-    $existingOffice = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
-                                        HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | 
-                      Where-Object { $_.DisplayName -like "*Microsoft 365 Apps for enterprise*" -or 
-                                    $_.DisplayName -like "*Microsoft Office 365*" }
-
-    if ($existingOffice -and -not $Force) {
-        [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
-        [Console]::Write("Existing Microsoft Office installation found: $($existingOffice.DisplayName)")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        Write-Log "Existing Office installation found: $($existingOffice.DisplayName)"
-        return
-    }
-
-    # Create temp directory if it doesn't exist
-    $tempDir = Split-Path -Path $DownloadPath -Parent
-    if (-not (Test-Path -Path $tempDir)) {
-        New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
-        Write-Log "Created directory: $tempDir"
-    }
-
-    # Download Office installer
-    try {
-        Write-Delayed "Downloading Microsoft Office 365..." -NewLine:$false
-        
-        # Delete existing installer if it exists
-        if (Test-Path $DownloadPath) {
-            Remove-Item -Path $DownloadPath -Force -ErrorAction Stop
-            Write-Log "Removed existing installer file"
-        }
-        
-        # Configure download parameters with timeout
-        $downloadParams = @{
-            Uri = $DownloadUrl
-            OutFile = $DownloadPath
-            UseBasicParsing = $true
-            TimeoutSec = 300  # 5-minute timeout for download
-        }
-        
-        # Start download with progress tracking
-        $ProgressPreference = 'SilentlyContinue'  # Hide progress bar for faster downloads
-        Invoke-WebRequest @downloadParams
-        $ProgressPreference = 'Continue'
-        
-        # Verify download
-        if (-not (Test-Path -Path $DownloadPath)) {
-            throw "Download completed but file not found at $DownloadPath"
-        }
-        
-        $fileInfo = Get-Item -Path $DownloadPath
-        if ($fileInfo.Length -eq 0) {
-            throw "Downloaded file is empty (0 bytes)"
-        }
-        
-        Write-Log "Office installer downloaded successfully, size: $($fileInfo.Length) bytes"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write(" done.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-    }
-    catch {
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        [Console]::Write(" failed.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        Write-Log "Failed to download Office installer: $($_.Exception.Message)"
-        Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-        return
-    }
-
-    # Check for running Office processes and gracefully close them
-    Write-Delayed "Checking for running Office applications..." -NewLine:$false
-    $officeProcesses = @(
-        "WINWORD", "EXCEL", "POWERPNT", "OUTLOOK", "ONENOTE", "MSACCESS", 
-        "MSPUB", "OfficeClickToRun", "OfficeC2RClient"
-    )
-    
-    $processesFound = $false
-    foreach ($proc in $officeProcesses) {
-        $processes = Get-Process -Name $proc -ErrorAction SilentlyContinue
-        if ($processes) {
-            $processesFound = $true
-            foreach ($p in $processes) {
-                try {
-                    # Try to close gracefully first
-                    $p.CloseMainWindow() | Out-Null
-                    # Give it a moment to close
-                    Start-Sleep -Seconds 2
-                    if (-not $p.HasExited) {
-                        $p.Kill()
-                    }
-                } catch {
-                    # If graceful close fails, force kill
-                    try {
-                        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-                    } catch {
-                        Write-Log "Failed to kill process $($p.Name): $($_.Exception.Message)"
-                    }
-                }
-            }
-        }
-    }
-    
-    if ($processesFound) {
-        Write-Log "Terminated running Office processes"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-        [Console]::Write(" processes terminated.")
-    } else {
-        Write-Log "No running Office processes found"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write(" none found.")
-    }
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    
-    # Install Office
-    try {
-        Write-Delayed "Installing Microsoft Office 365..." -NewLine:$false
-        Write-Log "Starting Office installation"
-        
-        # Launch installer with process monitoring
-        $startTime = Get-Date
-        $process = Start-Process -FilePath $DownloadPath -ArgumentList "/configure", "$tempDir\Office365Config.xml" -PassThru -Wait
-        
-        # Check installation result
-        if ($process.ExitCode -ne 0) {
-            throw "Office installer failed with exit code: $($process.ExitCode)"
-        }
-        
-        # Wait for installation to complete (up to timeout)
-        $endTime = Get-Date
-        $duration = ($endTime - $startTime).TotalSeconds
-        Write-Log "Office installer process completed in $duration seconds with exit code: $($process.ExitCode)"
-        
-        # Verify installation
-        Start-Sleep -Seconds 15  # Wait for registration to complete
-        
-        $newOffice = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
-                                      HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | 
-                     Where-Object { $_.DisplayName -like "*Microsoft 365 Apps for enterprise*" -or 
-                                   $_.DisplayName -like "*Microsoft Office 365*" }
-        
-        if ($newOffice) {
-            Write-Log "Office 365 Installation completed successfully: $($newOffice.DisplayName)"
-            [Console]::ForegroundColor = [System.ConsoleColor]::Green
-            [Console]::Write(" done.")
-            [Console]::ResetColor()
-            [Console]::WriteLine()
-            
-            # Clean up installer
-            Remove-Item -Path $DownloadPath -Force -ErrorAction SilentlyContinue
-            Write-Log "Installer file removed"
-            return $true
-        } else {
-            throw "Office installation completed but no Office products found in registry"
-        }
-    }
-    catch {
-        Write-Log "Office 365 installation failed: $($_.Exception.Message)"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        [Console]::Write(" failed.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        Write-Host "Installation Error: $($_.Exception.Message)" -ForegroundColor Red
-        return $false
-    }
-    finally {
-        # Always make sure these processes are terminated after install
-        Get-Process -Name "OfficeClickToRun", "OfficeC2RClient" -ErrorAction SilentlyContinue | 
-            Stop-Process -Force -ErrorAction SilentlyContinue
-    }
-}
-
 function Write-TaskComplete {
     [Console]::ForegroundColor = [System.ConsoleColor]::Green
     [Console]::Write(" done.")
@@ -500,328 +315,111 @@ Write-Log "Synced system clock"
 #                                                                                                          #
 ############################################################################################################
 #region Bitlocker
-# Check Bitlocker Compatibility with improved error reporting
+# Check Bitlocker Compatibility -v2
 $WindowsVer = Get-WmiObject -Query 'select * from Win32_OperatingSystem where (Version like "6.2%" or Version like "6.3%" or Version like "10.0%") and ProductType = "1"' -ErrorAction SilentlyContinue
 $TPM = Get-WmiObject -Namespace root\cimv2\security\microsofttpm -Class Win32_Tpm -ErrorAction SilentlyContinue
 $BitLockerReadyDrive = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction SilentlyContinue
 
-# Begin with detailed requirement checks
-$requirementsMet = $true
-$missingRequirements = @()
-
-if (-not $WindowsVer) {
-    $requirementsMet = $false
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    $missingRequirements += "Unsupported Windows version: $($osInfo.Caption) $($osInfo.Version)"
-    Write-Log "BitLocker requirement not met: Unsupported Windows version detected - $($osInfo.Caption) $($osInfo.Version)"
-}
-
-if (-not $TPM) {
-    $requirementsMet = $false
-    $missingRequirements += "TPM not available or not functioning"
-    Write-Log "BitLocker requirement not met: TPM not available or not functioning"
-}
-
-if (-not $BitLockerReadyDrive) {
-    $requirementsMet = $false
-    $missingRequirements += "Drive not compatible with BitLocker"
-    Write-Log "BitLocker requirement not met: Drive not compatible with BitLocker"
-}
-
-if ($requirementsMet) {
+if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
     # Check if Bitlocker is already configured on C:
     $BitLockerStatus = Get-BitLockerVolume -MountPoint $env:SystemDrive
-    
     # Ensure the output directory exists
     $outputDirectory = "C:\temp"
     if (-not (Test-Path -Path $outputDirectory)) {
         New-Item -Path $outputDirectory -ItemType Directory | Out-Null
     }
-    
-    # Check if we're resuming an interrupted encryption
-    $resumingEncryption = $false
-    if ($BitLockerStatus.ProtectionStatus -eq 'Off' -and $BitLockerStatus.VolumeStatus -eq 'EncryptionInProgress') {
-        $resumingEncryption = $true
-        Write-Delayed "Resuming interrupted BitLocker encryption..." -NewLine:$true
-        Write-Log "Resuming previously interrupted BitLocker encryption"
-    }
-    
-    if ($BitLockerStatus.ProtectionStatus -eq 'On' -and -not $resumingEncryption) {
+    if ($BitLockerStatus.ProtectionStatus -eq 'On') {
         # Bitlocker is already configured
-        [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-        Write-Delayed "BitLocker is already configured on $env:SystemDrive - " -NewLine:$false
+        [Console]::ForegroundColor = [System.ConsoleColor]::Red
+        Write-Delayed "Bitlocker is already configured on $env:SystemDrive - " -NewLine:$false
         [Console]::ResetColor()
 
-        # Improved prompt with more robust timeout handling
+        # Setup for non-blocking read with timeout
         $timeoutSeconds = 10
-        $prompt = "Do you want to skip BitLocker configuration? (Y/N, timeout in ${timeoutSeconds}s): "
-        
-        Write-Host $prompt -NoNewline -ForegroundColor Yellow
-        
-        $startTime = Get-Date
+        $endTime = (Get-Date).AddSeconds($timeoutSeconds)
         $userResponse = $null
-        
-        # Clear any pending keys in the input buffer
-        while ([Console]::KeyAvailable) { $null = [Console]::ReadKey($true) }
-        
-        do {
+
+        [Console]::ForegroundColor = [System.ConsoleColor]::Red
+        Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
+        [Console]::ResetColor()
+
+        while ($true) {
             if ([Console]::KeyAvailable) {
                 $key = [Console]::ReadKey($true)
-                # Only accept Y, y, N, or n
-                if ('y', 'Y', 'n', 'N' -contains $key.KeyChar) {
+                if ($key.KeyChar -match '^[ynYN]$') {
                     $userResponse = $key.KeyChar
-                    Write-Host $key.KeyChar
                     break
                 }
+            } elseif ((Get-Date) -ge $endTime) {
+                Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
+                Write-Host -ForegroundColor Green " done."
+                $userResponse = 'y' # Assume 'yes' to skip if no response
+                break
             }
-            Start-Sleep -Milliseconds 100
-            $elapsedTime = ((Get-Date) - $startTime).TotalSeconds
-            
-            # Update countdown every second
-            if ([Math]::Floor($elapsedTime) -ne [Math]::Floor($elapsedTime - 0.1)) {
-                $remainingTime = $timeoutSeconds - [Math]::Floor($elapsedTime)
-                if ($remainingTime -ge 0) {
-                    Write-Host "`r$prompt$remainingTime seconds remaining     " -NoNewline -ForegroundColor Yellow
-                }
-            }
-            
-        } until ($elapsedTime -ge $timeoutSeconds)
-        
-        # If no response or response is Y/y, skip reconfiguration
-        if ($null -eq $userResponse -or $userResponse -in ('y', 'Y')) {
-            if ($null -eq $userResponse) {
-                Write-Host "`r$prompt" -NoNewline -ForegroundColor Yellow
-                Write-Host "Y (timeout)" -ForegroundColor Green
-            }
-            Write-Host "Skipping BitLocker reconfiguration." -ForegroundColor Green
-            Write-Log "BitLocker already configured, skipping reconfiguration (user choice or timeout)"
+            Start-Sleep -Milliseconds 500
         }
-        else {
-            # User chose to reconfigure BitLocker
-            Write-Host "Reconfiguring BitLocker encryption..."
-            Write-Log "User chose to reconfigure BitLocker encryption"
-            
+
+        if ($userResponse -ine 'y') {
             # Disable BitLocker
-            Write-Host "Disabling current BitLocker encryption..." -NoNewline
-            $result = manage-bde -off $env:SystemDrive 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host " failed!" -ForegroundColor Red
-                Write-Host "Error: $result" -ForegroundColor Red
-                Write-Log "Failed to disable BitLocker: $result"
-                return
-            }
-            Write-Host " done." -ForegroundColor Green
-            
-            # Monitor decryption progress with improved pattern matching
-            Write-Host "Monitoring decryption progress..."
+            manage-bde -off $env:SystemDrive | Out-Null
+
+            # Monitor decryption progress
             do {
-                Start-Sleep -Seconds 2
-                $status = manage-bde -status $env:SystemDrive | Out-String
-                
-                # More robust pattern matching
-                if ($status -match "Percentage\s+Encrypted\s*:\s*([\d\.]+)%") {
-                    $percentageEncrypted = $matches[1].Trim()
-                    $percentageRemaining = [math]::Round(100 - [double]$percentageEncrypted, 1)
-                    Write-Progress -Activity "Decrypting Drive $env:SystemDrive" -Status "$percentageRemaining% remaining" -PercentComplete ([double]$percentageRemaining)
-                }
-                else {
-                    Write-Host "Warning: Could not parse encryption percentage." -ForegroundColor Yellow
-                }
-                
-                # Check if decryption is complete
-                if ($status -match "Percentage\s+Encrypted\s*:\s*0\.0%") {
-                    break
-                }
-                
-            } until ($status -match "Protection\s+Off" -and $status -match "Percentage\s+Encrypted\s*:\s*0\.0%")
-            
-            Write-Progress -Activity "Decrypting Drive $env:SystemDrive" -Completed
-            Write-Host "Decryption of $env:SystemDrive is complete." -ForegroundColor Green
-            
-            # Proceed with BitLocker configuration (same for both new and reconfiguration)
-            Configure-BitLocker
+                $status = manage-bde -status $env:SystemDrive
+                $percentageEncrypted = ($status | Select-String -Pattern "Percentage Encrypted:.*").ToString().Split(":")[1].Trim()
+                Write-Host "`rCurrent decryption progress: $percentageEncrypted" -NoNewline
+                Start-Sleep -Seconds 1
+            } until ($percentageEncrypted -eq "0.0%")
+            Write-Host "`nDecryption of $env:SystemDrive is complete."
+            # Reconfigure BitLocker
+            Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$true
+            Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -WarningAction SilentlyContinue | Out-Null
+            Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -WarningAction SilentlyContinue | Out-Null
+            Start-Process 'manage-bde.exe' -ArgumentList " -on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait | Out-Null
+            # Verify volume key protector exists
+            $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
+            if ($BitLockerVolume.KeyProtector) {
+                Write-Host "Bitlocker disk encryption configured successfully."
+            } else {
+                Write-Host "Bitlocker disk encryption is not configured."
+            }
         }
-    }
-    elseif ($resumingEncryption) {
-        # Resume interrupted encryption
-        Write-Delayed "Resuming BitLocker encryption process..." -NewLine:$true
-        
-        # Simply continue the encryption
-        manage-bde -resume $env:SystemDrive | Out-Null
-        
-        # Monitor encryption progress
-        Monitor-BitLockerEncryption
-        
-        # Verify and report final status
-        Verify-BitLockerStatus
-    }
-    else {
-        # BitLocker is not configured
-        Write-Delayed "Configuring BitLocker Disk Encryption..." -NewLine:$true
-        Write-Log "Starting BitLocker configuration"
-        
-        # Call to our encapsulated BitLocker configuration
-        Configure-BitLocker
-    }
-}
-else {
-    # Requirements not met, display detailed error
-    Write-Host "BitLocker Drive Encryption requirements not met:" -ForegroundColor Red
-    foreach ($requirement in $missingRequirements) {
-        Write-Host " - $requirement" -ForegroundColor Red
-    }
-    Write-Host "BitLocker encryption will be skipped." -ForegroundColor Yellow
-    Write-Log "Skipping BitLocker Drive Encryption due to missing requirements: $($missingRequirements -join ', ')"
-    Start-Sleep -Seconds 2
-}
-
-# Function to encapsulate BitLocker configuration logic
-function Configure-BitLocker {
-    try {
+    } else {
+        # Bitlocker is not configured
+        Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$true
         # Create the recovery key
-        Write-Host "Adding recovery password protector..." -NoNewline
-        $recoveryResult = Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -ErrorAction Stop
-        if ($null -eq $recoveryResult) {
-            throw "Failed to add recovery password protector."
-        }
-        Write-Host " done." -ForegroundColor Green
-        
+        Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -WarningAction SilentlyContinue | Out-Null
         # Add TPM key
-        Write-Host "Adding TPM protector..." -NoNewline
-        $tpmResult = Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -ErrorAction Stop
-        if ($null -eq $tpmResult) {
-            throw "Failed to add TPM protector."
-        }
-        Write-Host " done." -ForegroundColor Green
-        
-        # Wait for the protectors to take effect
-        Write-Host "Waiting for protectors to initialize (15 seconds)..." -NoNewline
-        Start-Sleep -Seconds 15
-        Write-Host " done." -ForegroundColor Green
-        
+        Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -WarningAction SilentlyContinue | Out-Null
+        Start-Sleep -Seconds 15 # Wait for the protectors to take effect
         # Enable Encryption
-        Write-Host "Starting BitLocker encryption..." -NoNewline
-        $encryptResult = Start-Process 'manage-bde.exe' -ArgumentList "-on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait -PassThru
-        if ($encryptResult.ExitCode -ne 0) {
-            throw "Failed to start BitLocker encryption. Exit code: $($encryptResult.ExitCode)"
-        }
-        Write-Host " done." -ForegroundColor Green
-        
+        Start-Process 'manage-bde.exe' -ArgumentList "-on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait | Out-Null
         # Backup the Recovery to AD
-        Write-Host "Backing up recovery key to Active Directory..." -NoNewline
-        $RecoveryKeyGUID = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | 
-                           Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword'} | 
-                           Select-Object -ExpandProperty KeyProtectorID -First 1
-        
-        if ($RecoveryKeyGUID) {
-            manage-bde.exe -protectors $env:SystemDrive -adbackup -id $RecoveryKeyGUID | Out-Null
-            Write-Host " done." -ForegroundColor Green
-        }
-        else {
-            Write-Host " failed (Recovery key GUID not found)." -ForegroundColor Yellow
-            Write-Log "Warning: Could not backup recovery key to AD - Key GUID not found"
-        }
-        
+        $RecoveryKeyGUID = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | Where-Object {$_.KeyProtectortype -eq 'RecoveryPassword'} | Select-Object -ExpandProperty KeyProtectorID
+        manage-bde.exe -protectors $env:SystemDrive -adbackup -id $RecoveryKeyGUID | Out-Null
         # Write Recovery Key to a file
-        Write-Host "Saving recovery key to file..." -NoNewline
-        manage-bde -protectors $env:SystemDrive -get | Out-File "$outputDirectory\$env:computername-BitLocker.txt" -Force
-        Write-Host " done." -ForegroundColor Green
-        
-        # Monitor encryption progress
-        Monitor-BitLockerEncryption
-        
-        # Verify and report final status
-        Verify-BitLockerStatus
-        
-    }
-    catch {
-        Write-Host "`nError configuring BitLocker: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "BitLocker configuration error: $($_.Exception.Message)"
-    }
-}
-
-# Function to monitor BitLocker encryption progress
-function Monitor-BitLockerEncryption {
-    Write-Host "Monitoring encryption progress..."
-    $encryptionComplete = $false
-    $consecutiveSuccesses = 0
-    
-    do {
-        try {
-            Start-Sleep -Seconds 2
-            $status = manage-bde -status $env:SystemDrive | Out-String
-            
-            # More robust pattern matching
-            if ($status -match "Percentage\s+Encrypted\s*:\s*([\d\.]+)%") {
-                $percentageEncrypted = $matches[1].Trim()
-                Write-Progress -Activity "Encrypting Drive $env:SystemDrive" -Status "$percentageEncrypted% Complete" -PercentComplete ([double]$percentageEncrypted)
-                
-                # Consider encryption complete when it reaches 100%
-                if ([double]$percentageEncrypted -ge 100) {
-                    $consecutiveSuccesses++
-                    if ($consecutiveSuccesses -ge 3) {
-                        $encryptionComplete = $true
-                    }
-                }
-                else {
-                    $consecutiveSuccesses = 0
-                }
-            }
-            else {
-                Write-Host "Warning: Could not parse encryption percentage." -ForegroundColor Yellow
-            }
-            
-            # Also check for "Protection On" status
-            if ($status -match "Protection\s+On" -and $status -match "Encryption\s+Method\s*:") {
-                $encryptionComplete = $true
-            }
-            
-        }
-        catch {
-            Write-Host "Warning: Error checking BitLocker status: $($_.Exception.Message)" -ForegroundColor Yellow
-            Start-Sleep -Seconds 5
-        }
-        
-    } until ($encryptionComplete)
-    
-    Write-Progress -Activity "Encrypting Drive $env:SystemDrive" -Completed
-    Write-Host "Encryption of $env:SystemDrive is complete." -ForegroundColor Green
-}
-
-# Function to verify and display BitLocker status
-function Verify-BitLockerStatus {
-    # Verify volume key protector exists
-    $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
-    if ($BitLockerVolume.KeyProtector -and $BitLockerVolume.ProtectionStatus -eq 'On') {
-        Write-Delayed "BitLocker disk encryption configured successfully." -NewLine:$true
-        Write-Log "BitLocker disk encryption configured successfully"
-        
-        $recoveryProtector = $BitLockerVolume.KeyProtector | 
-                            Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword'} | 
-                            Select-Object -First 1
-        
-        if ($recoveryProtector) {
+        manage-bde -protectors C: -get | Out-File "$outputDirectory\$env:computername-BitLocker.txt"
+        # Verify volume key protector exists
+        $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
+        if ($BitLockerVolume.KeyProtector) {
+            Write-Delayed "Bitlocker disk encryption configured successfully." -NewLine:$true
             Write-Delayed "Recovery ID:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $($recoveryProtector.KeyProtectorId.Trim('{', '}'))"
-            
+            Write-Host -ForegroundColor Cyan " $($BitLockerVolume.KeyProtector | Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | ForEach-Object { $_.KeyProtectorId.Trim('{', '}') })"
             Write-Delayed "Recovery Password:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $($recoveryProtector.RecoveryPassword)"
-            
-            Write-Log "BitLocker recovery information saved to $outputDirectory\$env:computername-BitLocker.txt"
-        }
-        else {
-            Write-Host "Warning: Recovery protector not found." -ForegroundColor Yellow
-            Write-Log "Warning: BitLocker recovery protector not found"
+            Write-Host -ForegroundColor Cyan " $($BitLockerVolume.KeyProtector | Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | Select-Object -ExpandProperty RecoveryPassword)"
+        } else {
+            [Console]::ForegroundColor = [System.ConsoleColor]::Red
+            [Console]::Write("Bitlocker disk encryption is not configured.")
+            [Console]::ResetColor()
+            [Console]::WriteLine()  
         }
     }
-    else {
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        [Console]::Write("BitLocker disk encryption is not properly configured.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        Write-Log "BitLocker disk encryption is not properly configured"
-    }
+} else {
+    Write-Warning "Skipping Bitlocker Drive Encryption due to device not meeting hardware requirements."
+    Write-Log "Skipping Bitlocker Drive Encryption due to device not meeting hardware requirements."
+    Start-Sleep -Seconds 1
 }
+
 
 ############################################################################################################
 #                                        System Restore Configuration                                      #
@@ -1252,191 +850,11 @@ if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
 
 
 ############################################################################################################
-#                                           Bloatware Cleanup                                              #
-#                                                                                                          #
-############################################################################################################
-#region Bloatware Cleanup
-# Trigger MITS Debloat for Windows 11
-if (Test-Windows11) {
-    try {
-        $Win11DebloatURL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/MITS-Debloat.zip"
-        $Win11DebloatFile = "c:\temp\MITS-Debloat.zip"
-        Invoke-WebRequest -Uri $Win11DebloatURL -OutFile $Win11DebloatFile -UseBasicParsing -ErrorAction Stop 
-        Start-Sleep -seconds 2
-        Expand-Archive $Win11DebloatFile -DestinationPath 'c:\temp\MITS-Debloat'
-        Start-Sleep -Seconds 2
-        Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\MITS-Debloat\MITS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -DisableLockscreenTips -DisableSuggestions -ShowKnownFileExt -TaskbarAlignLeft -HideSearchTb -DisableWidgets -Silent'"
-        Start-Sleep -Seconds 2
-        Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
-        Write-Log "Windows 11 Debloat completed successfully."
-    }
-    catch {
-        Write-Error "An error occurred: $($Error[0].Exception.Message)"
-    }
-}
-
-
-# Trigger MITS Debloat for Windows 10
-if (Test-Windows10) {
-    try {
-        $MITSDebloatURL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/MITS-Debloat.zip"
-        $MITSDebloatFile = "c:\temp\MITS-Debloat.zip"
-        Invoke-WebRequest -Uri $MITSDebloatURL -OutFile $MITSDebloatFile -UseBasicParsing -ErrorAction Stop 
-        Start-Sleep -seconds 2
-        Expand-Archive $MITSDebloatFile -DestinationPath c:\temp\MITS-Debloat -Force
-        Start-Sleep -Seconds 2
-        Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\MITS-Debloat\MITS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -ShowKnownFileExt -Silent'"
-        Start-Sleep -Seconds 2
-        Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
-        Write-Log "Windows 10 Debloat completed successfully."
-    }
-    catch {
-        Write-Error "An error occurred: $($Error[0].Exception.Message)"
-    }
-}
-
-############################################################################################################
-#                                          Office 365 Installation                                         #
-#                                                                                                          #
-############################################################################################################
-#
-# Install Office 365
-# Create Office 365 configuration XML
-function New-Office365ConfigXml {
-    param (
-        [string]$ConfigPath = "C:\temp\Office365Config.xml"
-    )
-    
-    $xmlContent = @"
-<Configuration>
-  <Add OfficeClientEdition="64" Channel="Current">
-    <Product ID="O365ProPlusRetail">
-      <Language ID="en-us" />
-      <ExcludeApp ID="Groove" />
-      <ExcludeApp ID="Lync" />
-    </Product>
-  </Add>
-  <Property Name="SharedComputerLicensing" Value="0" />
-  <Property Name="PinIconsToTaskbar" Value="TRUE" />
-  <Property Name="SCLCacheOverride" Value="0" />
-  <Updates Enabled="TRUE" />
-  <RemoveMSI />
-  <AppSettings>
-    <Setup Name="Company" Value="Standard Office Systems" />
-    <User Key="software\microsoft\office\16.0\excel\options" Name="defaultformat" Value="51" Type="REG_DWORD" App="excel16" Id="L_SaveExcelfilesas" />
-    <User Key="software\microsoft\office\16.0\powerpoint\options" Name="defaultformat" Value="27" Type="REG_DWORD" App="ppt16" Id="L_SavePowerPointfilesas" />
-    <User Key="software\microsoft\office\16.0\word\options" Name="defaultformat" Value="" Type="REG_SZ" App="word16" Id="L_SaveWordfilesas" />
-  </AppSettings>
-  <Display Level="None" AcceptEULA="TRUE" />
-</Configuration>
-"@
-
-    try {
-        # Create directory if it doesn't exist
-        $configDir = Split-Path -Path $ConfigPath -Parent
-        if (-not (Test-Path -Path $configDir)) {
-            New-Item -Path $configDir -ItemType Directory -Force | Out-Null
-        }
-        
-        # Write XML file
-        $xmlContent | Out-File -FilePath $ConfigPath -Encoding utf8 -Force
-        Write-Log "Created Office 365 configuration file at $ConfigPath"
-        return $true
-    }
-    catch {
-        Write-Log "Failed to create Office 365 configuration file: $($_.Exception.Message)"
-        return $false
-    }
-}
-
-# Main Office installation section
-try {
-    # Create Office 365 configuration XML
-    $xmlSuccess = New-Office365ConfigXml
-    if (-not $xmlSuccess) {
-        Write-Host "Failed to create Office 365 configuration file. Installation cannot proceed." -ForegroundColor Red
-        Write-Log "Office 365 installation aborted due to configuration file creation failure"
-    }
-    else {
-        # Run the installation
-        $installResult = Install-Office365
-        
-        # Verify final status
-        if ($installResult) {
-            Write-Host "Microsoft 365 Apps for enterprise installed successfully." -ForegroundColor Green
-            Write-Log "Microsoft 365 Apps for enterprise installation completed successfully"
-        }
-        else {
-            Write-Host "Microsoft 365 Apps for enterprise installation failed. Check logs for details." -ForegroundColor Red
-            Write-Log "Microsoft 365 Apps for enterprise installation failed"
-        }
-    }
-}
-catch {
-    Write-Host "Error during Office 365 installation process: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Log "Critical error in Office 365 installation process: $($_.Exception.Message)"
-}
-
-############################################################################################################
-#                                        Adobe Acrobat Installation                                        #
-#                                                                                                          #
-############################################################################################################
-# Acrobat Installation
-# Define the URL and file path for the Acrobat Reader installer
-$URL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/Reader_en_install.exe"
-$AcroFilePath = "$env:TEMP\Reader_en_install.exe"
-
-# Download the Acrobat Reader installer
-$ProgressPreference = 'SilentlyContinue'
-$response = Invoke-WebRequest -Uri $URL -Method Head
-$fileSize = $response.Headers["Content-Length"]
-$ProgressPreference = 'Continue'
-Write-Host "Downloading Adobe Acrobat Reader ($fileSize bytes)..."
-
-#$downloadStartTime = Get-Date
-Invoke-WebRequest -Uri $URL -OutFile $AcroFilePath -UseBasicParsing
-#$downloadEndTime = Get-Date
-
-#$downloadDuration = $downloadEndTime - $downloadStartTime
-#Write-Host "Download completed in $($downloadDuration.TotalSeconds) seconds."
-
-$FileSize = (Get-Item $AcroFilePath).Length
-$ExpectedSize = 1628608 # in bytes
-if ($FileSize -eq $ExpectedSize) {
-    # Start the silent installation of Acrobat Reader
-    Write-Host "Starting silent installation of Adobe Acrobat Reader..."
-    $installStartTime = Get-Date
-    Start-Process -FilePath $AcroFilePath -ArgumentList "/sAll /rs /rps /msi /norestart /quiet" -NoNewWindow
-
-    # Monitor the system for the active msiexec.exe process
-    Write-Host "Monitoring for msiexec.exe process..."
-    do {
-        Start-Sleep -Seconds 5
-        $msiexecProcess = Get-Process -Name msiexec -ErrorAction SilentlyContinue
-    } while ($msiexecProcess)
-
-    # Once msiexec.exe process exits, kill the Reader_en_install.exe process
-    Write-Host "msiexec.exe process has exited. Terminating Reader_en_install.exe..."
-    Stop-Process -Name Reader_en_install -Force -ErrorAction SilentlyContinue
-
-    Write-Host "Adobe Acrobat Reader installation complete."
-} else {
-    Write-Host "Download failed. File size does not match." -ForegroundColor "Red"
-    Start-Sleep -Seconds 5
-    Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue | Out-Null
-}
-
-
-############################################################################################################
 #                                        Cleanup and Finalization                                        #
 #                                                                                                          #
 ############################################################################################################
 #region Baseline Cleanup
 # Re-enable Windows Update
-
-<# Version 2.0
 Write-Delayed "Re-enabling Windows Update..." -NewLine:$false
 try {
     # Set the startup type of the Windows Update service back to automatic
@@ -1460,68 +878,6 @@ try {
 } catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
     Write-Log "Error re-enabling Windows Update: $_"
-}
-#>
-
-# Enable and start Windows Update Service
-Write-Delayed "Enabling Windows Update Service..." -NewLine:$false
-Set-Service -Name wuauserv -StartupType Manual
-Start-Sleep -seconds 3
-Start-Service -Name wuauserv
-Start-Sleep -Seconds 5
-$service = Get-Service -Name wuauserv
-if ($service.Status -eq 'Running') {
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
-    [Console]::WriteLine() 
-} else {
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" failed.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()    
-}
-
-# Installing Windows Updates
-function Set-UsoSvcAutomatic {
-    try {
-        # Set service to Automatic
-        Set-Service -Name "UsoSvc" -StartupType Automatic
-        
-        # Start the service
-        Start-Service -Name "UsoSvc"
-        
-        # Verify the service status
-        $service = Get-Service -Name "UsoSvc"
-    }
-    catch {
-        Write-Error "Failed to configure UsoSvc: $($_.Exception.Message)"
-    }
-}
-Write-Delayed "Checking for Windows Updates..." -NewLine:$false
-Set-UsoSvcAutomatic
-$ProgressPreference = 'SilentlyContinue'
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/wju10755/Baseline/main/Update_Windows-v3.ps1" -OutFile "c:\temp\update_windows.ps1"
-$ProgressPreference = 'Continue'
-if (Test-Path "c:\temp\update_windows.ps1") {
-    $updatePath = "C:\temp\Update_Windows.ps1"
-    $null = Start-Process PowerShell -ArgumentList "-NoExit", "-File", $updatePath *> $null
-    Start-Sleep -seconds 3
-    Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.SendKeys]::SendWait('%{TAB}')
-    Move-ProcessWindowToTopRight -processName "Windows PowerShell" | Out-Null
-    Start-Sleep -Seconds 1
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    Write-Log "All available Windows updates are installed."
-     
-} else {
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    Write-Delayed "Windows Update execution failed!" -NewLine:$false
-        [Console]::ResetColor()
-        [Console]::WriteLine()  
 }
 
 # Create WakeLock exit flag to stop the WakeLock script

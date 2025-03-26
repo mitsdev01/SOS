@@ -34,9 +34,6 @@ Clear-Host
 #                                                                                                          #
 ############################################################################################################
 #region Functions
-# ---------------------------------------------------------------------
-# Helper Functions
-# ---------------------------------------------------------------------
 function Print-Middle($Message, $Color = "White") {
     Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
     Write-Host -ForegroundColor $Color $Message
@@ -75,191 +72,6 @@ function Test-Win11 {
     return $osInfo.Version -ge "10.0.22000" -and $osInfo.Caption -like "*Windows 11*"
 }
 
-function Install-Office365 {
-    [CmdletBinding()]
-    param (
-        [string]$DownloadUrl = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/OfficeSetup.exe",
-        [string]$DownloadPath = "C:\temp\OfficeSetup.exe",
-        [int]$TimeoutSeconds = 600,
-        [switch]$Force
-    )
-
-    Write-Log "Starting Office 365 installation process"
-    
-    # Check for existing Office installation
-    $existingOffice = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
-                                        HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | 
-                      Where-Object { $_.DisplayName -like "*Microsoft 365 Apps for enterprise*" -or 
-                                    $_.DisplayName -like "*Microsoft Office 365*" }
-
-    if ($existingOffice -and -not $Force) {
-        [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
-        [Console]::Write("Existing Microsoft Office installation found: $($existingOffice.DisplayName)")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        Write-Log "Existing Office installation found: $($existingOffice.DisplayName)"
-        return
-    }
-
-    # Create temp directory if it doesn't exist
-    $tempDir = Split-Path -Path $DownloadPath -Parent
-    if (-not (Test-Path -Path $tempDir)) {
-        New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
-        Write-Log "Created directory: $tempDir"
-    }
-
-    # Download Office installer
-    try {
-        Write-Delayed "Downloading Microsoft Office 365..." -NewLine:$false
-        
-        # Delete existing installer if it exists
-        if (Test-Path $DownloadPath) {
-            Remove-Item -Path $DownloadPath -Force -ErrorAction Stop
-            Write-Log "Removed existing installer file"
-        }
-        
-        # Configure download parameters with timeout
-        $downloadParams = @{
-            Uri = $DownloadUrl
-            OutFile = $DownloadPath
-            UseBasicParsing = $true
-            TimeoutSec = 300  # 5-minute timeout for download
-        }
-        
-        # Start download with progress tracking
-        $ProgressPreference = 'SilentlyContinue'  # Hide progress bar for faster downloads
-        Invoke-WebRequest @downloadParams
-        $ProgressPreference = 'Continue'
-        
-        # Verify download
-        if (-not (Test-Path -Path $DownloadPath)) {
-            throw "Download completed but file not found at $DownloadPath"
-        }
-        
-        $fileInfo = Get-Item -Path $DownloadPath
-        if ($fileInfo.Length -eq 0) {
-            throw "Downloaded file is empty (0 bytes)"
-        }
-        
-        Write-Log "Office installer downloaded successfully, size: $($fileInfo.Length) bytes"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write(" done.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-    }
-    catch {
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        [Console]::Write(" failed.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        Write-Log "Failed to download Office installer: $($_.Exception.Message)"
-        Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-        return
-    }
-
-    # Check for running Office processes and gracefully close them
-    Write-Delayed "Checking for running Office applications..." -NewLine:$false
-    $officeProcesses = @(
-        "WINWORD", "EXCEL", "POWERPNT", "OUTLOOK", "ONENOTE", "MSACCESS", 
-        "MSPUB", "OfficeClickToRun", "OfficeC2RClient"
-    )
-    
-    $processesFound = $false
-    foreach ($proc in $officeProcesses) {
-        $processes = Get-Process -Name $proc -ErrorAction SilentlyContinue
-        if ($processes) {
-            $processesFound = $true
-            foreach ($p in $processes) {
-                try {
-                    # Try to close gracefully first
-                    $p.CloseMainWindow() | Out-Null
-                    # Give it a moment to close
-                    Start-Sleep -Seconds 2
-                    if (-not $p.HasExited) {
-                        $p.Kill()
-                    }
-                } catch {
-                    # If graceful close fails, force kill
-                    try {
-                        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-                    } catch {
-                        Write-Log "Failed to kill process $($p.Name): $($_.Exception.Message)"
-                    }
-                }
-            }
-        }
-    }
-    
-    if ($processesFound) {
-        Write-Log "Terminated running Office processes"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-        [Console]::Write(" processes terminated.")
-    } else {
-        Write-Log "No running Office processes found"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write(" none found.")
-    }
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    
-    # Install Office
-    try {
-        Write-Delayed "Installing Microsoft Office 365..." -NewLine:$false
-        Write-Log "Starting Office installation"
-        
-        # Launch installer with process monitoring
-        $startTime = Get-Date
-        $process = Start-Process -FilePath $DownloadPath -ArgumentList "/configure", "$tempDir\Office365Config.xml" -PassThru -Wait
-        
-        # Check installation result
-        if ($process.ExitCode -ne 0) {
-            throw "Office installer failed with exit code: $($process.ExitCode)"
-        }
-        
-        # Wait for installation to complete (up to timeout)
-        $endTime = Get-Date
-        $duration = ($endTime - $startTime).TotalSeconds
-        Write-Log "Office installer process completed in $duration seconds with exit code: $($process.ExitCode)"
-        
-        # Verify installation
-        Start-Sleep -Seconds 15  # Wait for registration to complete
-        
-        $newOffice = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
-                                      HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | 
-                     Where-Object { $_.DisplayName -like "*Microsoft 365 Apps for enterprise*" -or 
-                                   $_.DisplayName -like "*Microsoft Office 365*" }
-        
-        if ($newOffice) {
-            Write-Log "Office 365 Installation completed successfully: $($newOffice.DisplayName)"
-            [Console]::ForegroundColor = [System.ConsoleColor]::Green
-            [Console]::Write(" done.")
-            [Console]::ResetColor()
-            [Console]::WriteLine()
-            
-            # Clean up installer
-            Remove-Item -Path $DownloadPath -Force -ErrorAction SilentlyContinue
-            Write-Log "Installer file removed"
-            return $true
-        } else {
-            throw "Office installation completed but no Office products found in registry"
-        }
-    }
-    catch {
-        Write-Log "Office 365 installation failed: $($_.Exception.Message)"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        [Console]::Write(" failed.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        Write-Host "Installation Error: $($_.Exception.Message)" -ForegroundColor Red
-        return $false
-    }
-    finally {
-        # Always make sure these processes are terminated after install
-        Get-Process -Name "OfficeClickToRun", "OfficeC2RClient" -ErrorAction SilentlyContinue | 
-            Stop-Process -Force -ErrorAction SilentlyContinue
-    }
-}
-
 function Write-TaskComplete {
     [Console]::ForegroundColor = [System.ConsoleColor]::Green
     [Console]::Write(" done.")
@@ -274,15 +86,234 @@ function Write-TaskFailed {
     [Console]::WriteLine()
 }
 
+function Move-ProcessWindowToTopRight {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$processName
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $processes = Get-Process | Where-Object { $_.ProcessName -eq $processName }
+    
+    foreach ($process in $processes) {
+        $hwnd = $process.MainWindowHandle
+        if ($hwnd -eq [IntPtr]::Zero) { continue }
+        
+        $x = $screen.Right - 800
+        $y = $screen.Top
+        
+        [void][Win32.User32]::SetWindowPos($hwnd, -1, $x, $y, 800, 600, 0x0040)
+    }
+}
+
+# Add the required Win32 API functions
+Add-Type -TypeDefinition @"
+    using System;
+    using System.Runtime.InteropServices;
+    
+    namespace Win32 {
+        public class User32 {
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        }
+    }
+"@
+
+function Show-SpinningWait {
+    param (
+        [Parameter(Mandatory = $true)]
+        [ScriptBlock]$ScriptBlock,
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [string]$DoneMessage = "done."
+    )
+    
+    Write-Delayed "$Message" -NewLine:$false
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    $jobName = [Guid]::NewGuid().ToString()
+    
+    # Start the script block as a job
+    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock
+    
+    # Display spinner while job is running
+    while ($job.State -eq 'Running') {
+        [Console]::Write($spinner[$spinnerIndex])
+        Start-Sleep -Milliseconds 100
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    }
+    
+    # Get the job result
+    $result = Receive-Job -Name $jobName
+    Remove-Job -Name $jobName
+    
+    # Replace spinner with done message
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write($DoneMessage)
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
+    return $result
+}
+
+# BitLocker configuration logic
+function Configure-BitLocker {
+    try {
+        # Create the recovery key
+        Write-Host "Adding recovery password protector..." -NoNewline
+        $recoveryResult = Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -ErrorAction Stop
+        if ($null -eq $recoveryResult) {
+            throw "Failed to add recovery password protector."
+        }
+        Write-Host " done." -ForegroundColor Green
+        
+        # Add TPM key
+        Write-Host "Adding TPM protector..." -NoNewline
+        $tpmResult = Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -ErrorAction Stop
+        if ($null -eq $tpmResult) {
+            throw "Failed to add TPM protector."
+        }
+        Write-Host " done." -ForegroundColor Green
+        
+        # Wait for the protectors to take effect
+        Write-Host "Waiting for protectors to initialize (15 seconds)..." -NoNewline
+        Start-Sleep -Seconds 15
+        Write-Host " done." -ForegroundColor Green
+        
+        # Enable Encryption
+        Write-Host "Starting BitLocker encryption..." -NoNewline
+        $encryptResult = Start-Process 'manage-bde.exe' -ArgumentList "-on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait -PassThru
+        if ($encryptResult.ExitCode -ne 0) {
+            throw "Failed to start BitLocker encryption. Exit code: $($encryptResult.ExitCode)"
+        }
+        Write-Host " done." -ForegroundColor Green
+        
+        # Backup the Recovery to AD
+        Write-Host "Backing up recovery key to Active Directory..." -NoNewline
+        $RecoveryKeyGUID = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | 
+                           Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword'} | 
+                           Select-Object -ExpandProperty KeyProtectorID -First 1
+        
+        if ($RecoveryKeyGUID) {
+            manage-bde.exe -protectors $env:SystemDrive -adbackup -id $RecoveryKeyGUID | Out-Null
+            Write-Host " done." -ForegroundColor Green
+        }
+        else {
+            Write-Host " failed (Recovery key GUID not found)." -ForegroundColor Yellow
+            Write-Log "Warning: Could not backup recovery key to AD - Key GUID not found"
+        }
+        
+        # Write Recovery Key to a file
+        Write-Host "Saving recovery key to file..." -NoNewline
+        manage-bde -protectors $env:SystemDrive -get | Out-File "$outputDirectory\$env:computername-BitLocker.txt" -Force
+        Write-Host " done." -ForegroundColor Green
+        
+        # Monitor encryption progress
+        Monitor-BitLockerEncryption
+        
+        # Verify and report final status
+        Verify-BitLockerStatus
+        
+    }
+    catch {
+        Write-Host "`nError configuring BitLocker: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "BitLocker configuration error: $($_.Exception.Message)"
+    }
+}
+# Monitor Encryption
+function Monitor-BitLockerEncryption {
+    Write-Host "Monitoring encryption progress..."
+    $encryptionComplete = $false
+    $consecutiveSuccesses = 0
+    
+    do {
+        try {
+            Start-Sleep -Seconds 2
+            $status = manage-bde -status $env:SystemDrive | Out-String
+            
+            # More robust pattern matching
+            if ($status -match "Percentage\s+Encrypted\s*:\s*([\d\.]+)%") {
+                $percentageEncrypted = $matches[1].Trim()
+                Write-Progress -Activity "Encrypting Drive $env:SystemDrive" -Status "$percentageEncrypted% Complete" -PercentComplete ([double]$percentageEncrypted)
+                
+                # Consider encryption complete when it reaches 100%
+                if ([double]$percentageEncrypted -ge 100) {
+                    $consecutiveSuccesses++
+                    if ($consecutiveSuccesses -ge 3) {
+                        $encryptionComplete = $true
+                    }
+                }
+                else {
+                    $consecutiveSuccesses = 0
+                }
+            }
+            else {
+                Write-Host "Warning: Could not parse encryption percentage." -ForegroundColor Yellow
+            }
+            
+            # Also check for "Protection On" status
+            if ($status -match "Protection\s+On" -and $status -match "Encryption\s+Method\s*:") {
+                $encryptionComplete = $true
+            }
+            
+        }
+        catch {
+            Write-Host "Warning: Error checking BitLocker status: $($_.Exception.Message)" -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
+        }
+        
+    } until ($encryptionComplete)
+    
+    Write-Progress -Activity "Encrypting Drive $env:SystemDrive" -Completed
+    Write-Host "Encryption of $env:SystemDrive is complete." -ForegroundColor Green
+}
+
+# Verify BitLocker status
+function Verify-BitLockerStatus {
+    # Verify volume key protector exists
+    $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
+    if ($BitLockerVolume.KeyProtector -and $BitLockerVolume.ProtectionStatus -eq 'On') {
+        Write-Delayed "BitLocker disk encryption configured successfully." -NewLine:$true
+        Write-Log "BitLocker disk encryption configured successfully"
+        
+        $recoveryProtector = $BitLockerVolume.KeyProtector | 
+                            Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword'} | 
+                            Select-Object -First 1
+        
+        if ($recoveryProtector) {
+            Write-Delayed "Recovery ID:" -NewLine:$false
+            Write-Host -ForegroundColor Cyan " $($recoveryProtector.KeyProtectorId.Trim('{', '}'))"
+            
+            Write-Delayed "Recovery Password:" -NewLine:$false
+            Write-Host -ForegroundColor Cyan " $($recoveryProtector.RecoveryPassword)"
+            
+            Write-Log "BitLocker recovery information saved to $outputDirectory\$env:computername-BitLocker.txt"
+        }
+        else {
+            Write-Host "Warning: Recovery protector not found." -ForegroundColor Yellow
+            Write-Log "Warning: BitLocker recovery protector not found"
+        }
+    }
+    else {
+        [Console]::ForegroundColor = [System.ConsoleColor]::Red
+        [Console]::Write("BitLocker disk encryption is not properly configured.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        Write-Log "BitLocker disk encryption is not properly configured"
+    }
+}
+
 #endregion Functions
 
 # Print Script Title
-# ---------------------------------------------------------------------
 $ScriptVersion = "1.1.5"
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding -NoNewline
 Print-Middle "SOS - New Workstation Baseline Script"
-Write-Host -ForegroundColor Cyan "                                                   version $ScriptVersion"
+Write-Host -ForegroundColor Yellow "                                                   version $ScriptVersion"
 Write-Host -ForegroundColor "Green" -NoNewline $Padding
 Write-Host "  "
 Start-Sleep -Seconds 2
@@ -357,6 +388,147 @@ while ($true) {
     Write-Error "Failed to setup WakeLock: $_"
 }
 #endregion WakeLock
+
+############################################################################################################
+#                                              Datto RMM Deployment                                        #
+#                                                                                                          #
+############################################################################################################
+#region RMM Deployment
+
+# Agent Installation Configuration
+$file = "$TempFolder\AgentSetup_Standard+Office+Systems+MITS.exe"
+$agentName = "CagService"
+$agentPath = "C:\Program Files (x86)\CentraStage"
+$installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/b1f0bb64-e008-44e9-8260-2c5039cdd437"
+
+# Function to validate installation
+function Test-DattoInstallation {
+    $service = Get-Service $agentName -ErrorAction SilentlyContinue
+    $serviceExists = $null -ne $service
+    $filesExist = Test-Path $agentPath
+    
+    return @{
+        ServiceExists = $serviceExists
+        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
+        FilesExist = $filesExist
+    }
+}
+
+# Check for existing Datto RMM agent
+$installStatus = Test-DattoInstallation
+if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
+    Write-Host "Datto RMM agent is already installed and running." -ForegroundColor Green
+    Write-Log "Datto RMM agent already installed and running"
+} else {
+    # Clean up any partial installations
+    if ($installStatus.FilesExist) {
+        Write-Host "Cleaning up partial installation..." -ForegroundColor Yellow
+        try {
+            # Stop service if it exists but not running
+            if ($installStatus.ServiceExists -and -not $installStatus.ServiceRunning) {
+                Stop-Service -Name $agentName -Force -ErrorAction SilentlyContinue
+                # Give it a moment to stop
+                Start-Sleep -Seconds 3
+            }
+            Remove-Item -Path $agentPath -Recurse -Force -ErrorAction Stop
+        } catch {
+            Write-Host "Warning: Could not fully clean up previous installation. Continuing anyway." -ForegroundColor Yellow
+            Write-Log "Warning: Could not fully clean up previous RMM installation: $($_.Exception.Message)"
+        }
+    }
+
+    # Download and install
+    Write-Host "Downloading Datto RMM Agent..." -NoNewline
+    try {
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($installerUri, $file)
+        Write-Host " done." -ForegroundColor Green
+    } catch {
+        Write-Host " failed!" -ForegroundColor Red
+        Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Failed to download Datto RMM agent: $($_.Exception.Message)"
+    }
+
+    # Verify the file exists and has content
+    if ((Test-Path $file) -and (Get-Item $file).Length -gt 0) {
+        Write-Host "Installing Datto RMM Agent..." -NoNewline
+        try {
+            # Run installer
+            $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+            $startInfo.FileName = $file
+            $startInfo.Arguments = "/S"
+            $startInfo.UseShellExecute = $true
+            $startInfo.Verb = "runas"  # Run as admin
+            
+            $process = [System.Diagnostics.Process]::Start($startInfo)
+            if ($null -eq $process) {
+                throw "Failed to start installation process"
+            }
+            
+            $process.WaitForExit()
+            $exitCode = $process.ExitCode
+            
+            if ($exitCode -eq 0) {
+                Write-Host " done." -ForegroundColor Green
+                
+                # Wait for service initialization
+                Write-Host "Waiting for service initialization..." -NoNewline
+                Start-Sleep -Seconds 15
+                Write-Host " done." -ForegroundColor Green
+                
+                # Check if the service exists and is running
+                $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
+                
+                if ($null -ne $service -and $service.Status -eq "Running") {
+                    Write-Host "Installation completed successfully! Service is running." -ForegroundColor Green
+                    Write-Log "Datto RMM agent installed successfully"
+                    # Clean up installer file
+                    if (Test-Path $file) {
+                        Remove-Item -Path $file -Force
+                    }
+                } else {
+                    Write-Host "Installation validation failed! Service is not running or not found." -ForegroundColor Red
+                    if ($null -ne $service) {
+                        Write-Host "Service exists but status is: $($service.Status)" -ForegroundColor Yellow
+                        Write-Host "Attempting to start service..." -ForegroundColor Yellow
+                        Start-Service -Name $agentName -ErrorAction SilentlyContinue
+                        Start-Sleep -Seconds 5
+                        $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
+                        if ($null -ne $service -and $service.Status -eq "Running") {
+                            Write-Host "Service started successfully!" -ForegroundColor Green
+                            Write-Log "Datto RMM service started manually after installation"
+                        } else {
+                            Write-Host "Failed to start service." -ForegroundColor Red
+                            Write-Log "Failed to start Datto RMM service after installation"
+                        }
+                    } else {
+                        Write-Host "Service does not exist." -ForegroundColor Red
+                        Write-Log "Datto RMM service does not exist after installation"
+                    }
+                }
+            } else {
+                Write-Host " failed with exit code $exitCode." -ForegroundColor Red
+                Write-Log "Datto RMM installation failed with exit code $exitCode"
+                $fileInfo = Get-Item $file -ErrorAction SilentlyContinue
+                if ($null -ne $fileInfo) {
+                    Write-Host "File size: $($fileInfo.Length) bytes" -ForegroundColor Yellow
+                    if ($fileInfo.Length -lt 1000) {
+                        Write-Host "File appears to be too small to be a valid installer!" -ForegroundColor Red
+                        Write-Log "Datto RMM installer file is too small to be valid: $($fileInfo.Length) bytes"
+                    }
+                }
+            }
+        } catch {
+            Write-Host " installation failed!" -ForegroundColor Red
+            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "Error during Datto RMM installation: $($_.Exception.Message)"
+        }
+    } else {
+        Write-Host "Error: Downloaded file is missing or empty." -ForegroundColor Red
+        Write-Log "Datto RMM installer file is missing or empty"
+    }
+}
+#endregion RMMDeployment
 
 ############################################################################################################
 #                                        Account Configuration                                             #
@@ -499,7 +671,7 @@ Write-Log "Synced system clock"
 #                                        Bitlocker Configuration                                           #
 #                                                                                                          #
 ############################################################################################################
-#region Bitlocker
+#region Capability Check
 # Check Bitlocker Compatibility with improved error reporting
 $WindowsVer = Get-WmiObject -Query 'select * from Win32_OperatingSystem where (Version like "6.2%" or Version like "6.3%" or Version like "10.0%") and ProductType = "1"' -ErrorAction SilentlyContinue
 $TPM = Get-WmiObject -Namespace root\cimv2\security\microsofttpm -Class Win32_Tpm -ErrorAction SilentlyContinue
@@ -670,158 +842,12 @@ else {
     foreach ($requirement in $missingRequirements) {
         Write-Host " - $requirement" -ForegroundColor Red
     }
-    Write-Host "BitLocker encryption will be skipped." -ForegroundColor Yellow
+    Write-Host "BitLocker encryption configuration skipped." -ForegroundColor Yellow
     Write-Log "Skipping BitLocker Drive Encryption due to missing requirements: $($missingRequirements -join ', ')"
     Start-Sleep -Seconds 2
 }
+#region Configure Bitlocker
 
-# Function to encapsulate BitLocker configuration logic
-function Configure-BitLocker {
-    try {
-        # Create the recovery key
-        Write-Host "Adding recovery password protector..." -NoNewline
-        $recoveryResult = Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -ErrorAction Stop
-        if ($null -eq $recoveryResult) {
-            throw "Failed to add recovery password protector."
-        }
-        Write-Host " done." -ForegroundColor Green
-        
-        # Add TPM key
-        Write-Host "Adding TPM protector..." -NoNewline
-        $tpmResult = Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -ErrorAction Stop
-        if ($null -eq $tpmResult) {
-            throw "Failed to add TPM protector."
-        }
-        Write-Host " done." -ForegroundColor Green
-        
-        # Wait for the protectors to take effect
-        Write-Host "Waiting for protectors to initialize (15 seconds)..." -NoNewline
-        Start-Sleep -Seconds 15
-        Write-Host " done." -ForegroundColor Green
-        
-        # Enable Encryption
-        Write-Host "Starting BitLocker encryption..." -NoNewline
-        $encryptResult = Start-Process 'manage-bde.exe' -ArgumentList "-on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait -PassThru
-        if ($encryptResult.ExitCode -ne 0) {
-            throw "Failed to start BitLocker encryption. Exit code: $($encryptResult.ExitCode)"
-        }
-        Write-Host " done." -ForegroundColor Green
-        
-        # Backup the Recovery to AD
-        Write-Host "Backing up recovery key to Active Directory..." -NoNewline
-        $RecoveryKeyGUID = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | 
-                           Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword'} | 
-                           Select-Object -ExpandProperty KeyProtectorID -First 1
-        
-        if ($RecoveryKeyGUID) {
-            manage-bde.exe -protectors $env:SystemDrive -adbackup -id $RecoveryKeyGUID | Out-Null
-            Write-Host " done." -ForegroundColor Green
-        }
-        else {
-            Write-Host " failed (Recovery key GUID not found)." -ForegroundColor Yellow
-            Write-Log "Warning: Could not backup recovery key to AD - Key GUID not found"
-        }
-        
-        # Write Recovery Key to a file
-        Write-Host "Saving recovery key to file..." -NoNewline
-        manage-bde -protectors $env:SystemDrive -get | Out-File "$outputDirectory\$env:computername-BitLocker.txt" -Force
-        Write-Host " done." -ForegroundColor Green
-        
-        # Monitor encryption progress
-        Monitor-BitLockerEncryption
-        
-        # Verify and report final status
-        Verify-BitLockerStatus
-        
-    }
-    catch {
-        Write-Host "`nError configuring BitLocker: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "BitLocker configuration error: $($_.Exception.Message)"
-    }
-}
-
-# Function to monitor BitLocker encryption progress
-function Monitor-BitLockerEncryption {
-    Write-Host "Monitoring encryption progress..."
-    $encryptionComplete = $false
-    $consecutiveSuccesses = 0
-    
-    do {
-        try {
-            Start-Sleep -Seconds 2
-            $status = manage-bde -status $env:SystemDrive | Out-String
-            
-            # More robust pattern matching
-            if ($status -match "Percentage\s+Encrypted\s*:\s*([\d\.]+)%") {
-                $percentageEncrypted = $matches[1].Trim()
-                Write-Progress -Activity "Encrypting Drive $env:SystemDrive" -Status "$percentageEncrypted% Complete" -PercentComplete ([double]$percentageEncrypted)
-                
-                # Consider encryption complete when it reaches 100%
-                if ([double]$percentageEncrypted -ge 100) {
-                    $consecutiveSuccesses++
-                    if ($consecutiveSuccesses -ge 3) {
-                        $encryptionComplete = $true
-                    }
-                }
-                else {
-                    $consecutiveSuccesses = 0
-                }
-            }
-            else {
-                Write-Host "Warning: Could not parse encryption percentage." -ForegroundColor Yellow
-            }
-            
-            # Also check for "Protection On" status
-            if ($status -match "Protection\s+On" -and $status -match "Encryption\s+Method\s*:") {
-                $encryptionComplete = $true
-            }
-            
-        }
-        catch {
-            Write-Host "Warning: Error checking BitLocker status: $($_.Exception.Message)" -ForegroundColor Yellow
-            Start-Sleep -Seconds 5
-        }
-        
-    } until ($encryptionComplete)
-    
-    Write-Progress -Activity "Encrypting Drive $env:SystemDrive" -Completed
-    Write-Host "Encryption of $env:SystemDrive is complete." -ForegroundColor Green
-}
-
-# Function to verify and display BitLocker status
-function Verify-BitLockerStatus {
-    # Verify volume key protector exists
-    $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
-    if ($BitLockerVolume.KeyProtector -and $BitLockerVolume.ProtectionStatus -eq 'On') {
-        Write-Delayed "BitLocker disk encryption configured successfully." -NewLine:$true
-        Write-Log "BitLocker disk encryption configured successfully"
-        
-        $recoveryProtector = $BitLockerVolume.KeyProtector | 
-                            Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword'} | 
-                            Select-Object -First 1
-        
-        if ($recoveryProtector) {
-            Write-Delayed "Recovery ID:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $($recoveryProtector.KeyProtectorId.Trim('{', '}'))"
-            
-            Write-Delayed "Recovery Password:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $($recoveryProtector.RecoveryPassword)"
-            
-            Write-Log "BitLocker recovery information saved to $outputDirectory\$env:computername-BitLocker.txt"
-        }
-        else {
-            Write-Host "Warning: Recovery protector not found." -ForegroundColor Yellow
-            Write-Log "Warning: BitLocker recovery protector not found"
-        }
-    }
-    else {
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        [Console]::Write("BitLocker disk encryption is not properly configured.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        Write-Log "BitLocker disk encryption is not properly configured"
-    }
-}
 
 ############################################################################################################
 #                                        System Restore Configuration                                      #
@@ -844,7 +870,7 @@ Write-Log "System Restore Enabled"
 #                                        Offline Files Configuration                                       #
 #                                                                                                          #
 ############################################################################################################
-#region OfflineFiles
+#region Offline Files
 Write-Delayed "Disabling Offline File Sync..." -NewLine:$false
 
 # Set registry path for Offline Files
@@ -863,10 +889,10 @@ Write-Log "Offline file sync disabled"
 
 
 ############################################################################################################
-#                                        Windows UI Customization and Privacy Settings                     #
+#                                   Profile Customization and Privacy Settings                             #
 #                                                                                                          #
 ############################################################################################################
-#region Win UI Customization
+#region Profile Customization
 # Get all user SIDs for registry modifications
 $UserSIDs = @()
 Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | 
@@ -1109,147 +1135,157 @@ Write-Log "Disabled unnecessary scheduled tasks"
 
 
 ############################################################################################################
-#                                              Datto RMM Deployment                                        #
+#                                          Office 365 Installation                                         #
 #                                                                                                          #
 ############################################################################################################
-#region RMM Deployment
-Write-Host "Installing Datto RMM Agent..." -ForegroundColor Cyan
+#region Office 365 Install
+# Install Office 365
+$O365 = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
+                             HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+Where-Object { $_.DisplayName -like "*Microsoft 365 Apps for enterprise - en-us*" }
 
-# Agent Installation Configuration
-$file = "$TempFolder\AgentSetup_Standard+Office+Systems+MITS.exe"
-$agentName = "CagService"
-$agentPath = "C:\Program Files (x86)\CentraStage"
-$installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/b1f0bb64-e008-44e9-8260-2c5039cdd437"
-
-# Function to validate installation
-function Test-DattoInstallation {
-    $service = Get-Service $agentName -ErrorAction SilentlyContinue
-    $serviceExists = $null -ne $service
-    $filesExist = Test-Path $agentPath
-    
-    return @{
-        ServiceExists = $serviceExists
-        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
-        FilesExist = $filesExist
+if ($O365) {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    [Console]::Write("Existing Microsoft Office installation found.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()   
+} else {
+    $OfficePath = "c:\temp\OfficeSetup.exe"
+    if (-not (Test-Path $OfficePath)) {
+        $OfficeURL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/OfficeSetup.exe"
+        Write-Delayed "Downloading Microsoft Office 365..." -NewLine:$false
+        Invoke-WebRequest -OutFile $OfficePath -Uri $OfficeURL -UseBasicParsing
+        [Console]::ForegroundColor = [System.ConsoleColor]::Green
+        [Console]::Write(" done.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+    }
+    # Validate successful download by checking the file size
+    $FileSize = (Get-Item $OfficePath).Length
+    $ExpectedSize = 7733536 # in bytes
+    if ($FileSize -eq $ExpectedSize) {
+        # Use the spinning indicator function for Office installation
+        Show-SpinningWait -Message "Installing Microsoft Office 365..." -ScriptBlock {
+            taskkill /f /im OfficeClickToRun.exe *> $null
+            taskkill /f /im OfficeC2RClient.exe *> $null
+            Start-Sleep -Seconds 10
+            Start-Process -FilePath $OfficePath -Wait
+            Start-Sleep -Seconds 15
+            
+            # Return the installation status
+            if (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "Microsoft 365 Apps for enterprise - en-us"}) {
+                Write-Log "Office 365 Installation Completed Successfully."
+                return $true
+            } else {
+                Write-Log "Office 365 installation failed."
+                return $false
+            }
+        } | Out-Null
+        
+        # Check the installation result
+        if (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "Microsoft 365 Apps for enterprise - en-us"}) {
+            Start-Sleep -Seconds 10
+            taskkill /f /im OfficeClickToRun.exe *> $null
+            taskkill /f /im OfficeC2RClient.exe *> $null
+            Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
+        } else {
+            [Console]::ForegroundColor = [System.ConsoleColor]::Red
+            [Console]::Write("`nMicrosoft Office 365 installation failed.")
+            [Console]::ResetColor()
+            [Console]::WriteLine()  
+        }   
+    }
+    else {
+        # Report download error
+        Write-Log "Office download failed!"
+        [Console]::ForegroundColor = [System.ConsoleColor]::Red
+        [Console]::Write("Download failed or file size does not match.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        Start-Sleep -Seconds 10
+        Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
     }
 }
 
-# Check for existing Datto RMM agent
-$installStatus = Test-DattoInstallation
-if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
-    Write-Host "Datto RMM agent is already installed and running." -ForegroundColor Green
-    Write-Log "Datto RMM agent already installed and running"
-} else {
-    # Clean up any partial installations
-    if ($installStatus.FilesExist) {
-        Write-Host "Cleaning up partial installation..." -ForegroundColor Yellow
-        try {
-            # Stop service if it exists but not running
-            if ($installStatus.ServiceExists -and -not $installStatus.ServiceRunning) {
-                Stop-Service -Name $agentName -Force -ErrorAction SilentlyContinue
-                # Give it a moment to stop
-                Start-Sleep -Seconds 3
-            }
-            Remove-Item -Path $agentPath -Recurse -Force -ErrorAction Stop
-        } catch {
-            Write-Host "Warning: Could not fully clean up previous installation. Continuing anyway." -ForegroundColor Yellow
-            Write-Log "Warning: Could not fully clean up previous RMM installation: $($_.Exception.Message)"
-        }
-    }
+############################################################################################################
+#                                        Adobe Acrobat Installation                                        #
+#                                                                                                          #
+############################################################################################################
+#region Acrobat Installation
+# Define the URL and file path for the Acrobat Reader installer
+$URL = "https://axcientrestore.blob.core.windows.net/win11/AcroRdrDC2500120432_en_US.exe"
+$AcroFilePath = "C:\temp\AcroRdrDC2500120432_en_US.exe"
 
-    # Download and install
-    Write-Host "Downloading Datto RMM Agent..." -NoNewline
-    try {
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($installerUri, $file)
-        Write-Host " done." -ForegroundColor Green
-    } catch {
-        Write-Host " failed!" -ForegroundColor Red
-        Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "Failed to download Datto RMM agent: $($_.Exception.Message)"
-    }
+# Create temp directory if it doesn't exist
+if (-not (Test-Path "C:\temp")) {
+    New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
+    Write-Host "Created C:\temp directory"
+}
 
-    # Verify the file exists and has content
-    if ((Test-Path $file) -and (Get-Item $file).Length -gt 0) {
-        Write-Host "Installing Datto RMM Agent..." -NoNewline
-        try {
-            # Run installer
-            $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-            $startInfo.FileName = $file
-            $startInfo.Arguments = "/S"
-            $startInfo.UseShellExecute = $true
-            $startInfo.Verb = "runas"  # Run as admin
+# Download the Acrobat Reader installer
+$ProgressPreference = 'SilentlyContinue'  # Hide progress bar for faster downloads
+try {
+    $response = Invoke-WebRequest -Uri $URL -Method Head -ErrorAction Stop
+    $fileSize = $response.Headers['Content-Length']
+    Write-Host "Downloading Adobe Acrobat Reader ($fileSize bytes)..."
+    
+    Invoke-WebRequest -Uri $URL -OutFile $AcroFilePath -UseBasicParsing -ErrorAction Stop
+    Write-Host "Download completed successfully"
+    
+    $FileSize = (Get-Item $AcroFilePath).Length
+    
+    # Check if the file exists and has content (instead of exact size check)
+    if ((Test-Path $AcroFilePath -PathType Leaf) -and ($FileSize -gt 0)) {
+        # Start the silent installation of Acrobat Reader
+        Write-Host "Starting silent installation of Adobe Acrobat Reader..."
+        
+        # Use more reliable installation method with wait
+        $process = Start-Process -FilePath $AcroFilePath -ArgumentList "/sAll /rs /msi EULA_ACCEPT=YES /qn" -NoNewWindow -PassThru
+        
+        # Wait for initial process to complete
+        $process | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
+        
+        # Look for Reader installer processes and wait
+        Write-Host "Waiting for installation to complete..."
+        $timeout = 300  # 5 minutes timeout
+        $startTime = Get-Date
+        
+        do {
+            Start-Sleep -Seconds 5
+            $msiProcess = Get-Process -Name msiexec -ErrorAction SilentlyContinue
+            $readerProcess = Get-Process -Name Reader_en_install -ErrorAction SilentlyContinue
             
-            $process = [System.Diagnostics.Process]::Start($startInfo)
-            if ($null -eq $process) {
-                throw "Failed to start installation process"
+            $elapsedTime = (Get-Date) - $startTime
+            if ($elapsedTime.TotalSeconds -gt $timeout) {
+                Write-Host "Installation timed out after $timeout seconds" -ForegroundColor Yellow
+                break
             }
-            
-            $process.WaitForExit()
-            $exitCode = $process.ExitCode
-            
-            if ($exitCode -eq 0) {
-                Write-Host " done." -ForegroundColor Green
-                
-                # Wait for service initialization
-                Write-Host "Waiting for service initialization..." -NoNewline
-                Start-Sleep -Seconds 15
-                Write-Host " done." -ForegroundColor Green
-                
-                # Check if the service exists and is running
-                $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
-                
-                if ($null -ne $service -and $service.Status -eq "Running") {
-                    Write-Host "Installation completed successfully! Service is running." -ForegroundColor Green
-                    Write-Log "Datto RMM agent installed successfully"
-                    # Clean up installer file
-                    if (Test-Path $file) {
-                        Remove-Item -Path $file -Force
-                    }
-                } else {
-                    Write-Host "Installation validation failed! Service is not running or not found." -ForegroundColor Red
-                    if ($null -ne $service) {
-                        Write-Host "Service exists but status is: $($service.Status)" -ForegroundColor Yellow
-                        Write-Host "Attempting to start service..." -ForegroundColor Yellow
-                        Start-Service -Name $agentName -ErrorAction SilentlyContinue
-                        Start-Sleep -Seconds 5
-                        $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
-                        if ($null -ne $service -and $service.Status -eq "Running") {
-                            Write-Host "Service started successfully!" -ForegroundColor Green
-                            Write-Log "Datto RMM service started manually after installation"
-                        } else {
-                            Write-Host "Failed to start service." -ForegroundColor Red
-                            Write-Log "Failed to start Datto RMM service after installation"
-                        }
-                    } else {
-                        Write-Host "Service does not exist." -ForegroundColor Red
-                        Write-Log "Datto RMM service does not exist after installation"
-                    }
-                }
-            } else {
-                Write-Host " failed with exit code $exitCode." -ForegroundColor Red
-                Write-Log "Datto RMM installation failed with exit code $exitCode"
-                $fileInfo = Get-Item $file -ErrorAction SilentlyContinue
-                if ($null -ne $fileInfo) {
-                    Write-Host "File size: $($fileInfo.Length) bytes" -ForegroundColor Yellow
-                    if ($fileInfo.Length -lt 1000) {
-                        Write-Host "File appears to be too small to be a valid installer!" -ForegroundColor Red
-                        Write-Log "Datto RMM installer file is too small to be valid: $($fileInfo.Length) bytes"
-                    }
-                }
-            }
-        } catch {
-            Write-Host " installation failed!" -ForegroundColor Red
-            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Log "Error during Datto RMM installation: $($_.Exception.Message)"
+        } while ($msiProcess -or $readerProcess)
+        
+        # Try to gracefully close any remaining installer processes
+        Stop-Process -Name Reader_en_install -Force -ErrorAction SilentlyContinue
+        
+        # Verify installation
+        $acrobatPath = "${env:ProgramFiles(x86)}\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe"
+        if (Test-Path $acrobatPath) {
+            Write-Host "Adobe Acrobat Reader installation completed successfully" -ForegroundColor Green
+        } else {
+            Write-Host "Adobe Acrobat Reader installation may not have completed properly" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "Error: Downloaded file is missing or empty." -ForegroundColor Red
-        Write-Log "Datto RMM installer file is missing or empty"
+        Write-Host "Download failed or file is empty" -ForegroundColor Red
+    }
+} catch {
+    Write-Host "Error: $_" -ForegroundColor Red
+} finally {
+    # Cleanup
+    $ProgressPreference = 'Continue'
+    if (Test-Path $AcroFilePath) {
+        Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue
+        Write-Host "Cleaned up installer file"
     }
 }
-#endregion RMMDeployment
-
+#endregion Acrobat Installation
 
 ############################################################################################################
 #                                           Bloatware Cleanup                                              #
@@ -1295,137 +1331,6 @@ if (Test-Windows10) {
     catch {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
     }
-}
-
-############################################################################################################
-#                                          Office 365 Installation                                         #
-#                                                                                                          #
-############################################################################################################
-#
-# Install Office 365
-# Create Office 365 configuration XML
-function New-Office365ConfigXml {
-    param (
-        [string]$ConfigPath = "C:\temp\Office365Config.xml"
-    )
-    
-    $xmlContent = @"
-<Configuration>
-  <Add OfficeClientEdition="64" Channel="Current">
-    <Product ID="O365ProPlusRetail">
-      <Language ID="en-us" />
-      <ExcludeApp ID="Groove" />
-      <ExcludeApp ID="Lync" />
-    </Product>
-  </Add>
-  <Property Name="SharedComputerLicensing" Value="0" />
-  <Property Name="PinIconsToTaskbar" Value="TRUE" />
-  <Property Name="SCLCacheOverride" Value="0" />
-  <Updates Enabled="TRUE" />
-  <RemoveMSI />
-  <AppSettings>
-    <Setup Name="Company" Value="Standard Office Systems" />
-    <User Key="software\microsoft\office\16.0\excel\options" Name="defaultformat" Value="51" Type="REG_DWORD" App="excel16" Id="L_SaveExcelfilesas" />
-    <User Key="software\microsoft\office\16.0\powerpoint\options" Name="defaultformat" Value="27" Type="REG_DWORD" App="ppt16" Id="L_SavePowerPointfilesas" />
-    <User Key="software\microsoft\office\16.0\word\options" Name="defaultformat" Value="" Type="REG_SZ" App="word16" Id="L_SaveWordfilesas" />
-  </AppSettings>
-  <Display Level="None" AcceptEULA="TRUE" />
-</Configuration>
-"@
-
-    try {
-        # Create directory if it doesn't exist
-        $configDir = Split-Path -Path $ConfigPath -Parent
-        if (-not (Test-Path -Path $configDir)) {
-            New-Item -Path $configDir -ItemType Directory -Force | Out-Null
-        }
-        
-        # Write XML file
-        $xmlContent | Out-File -FilePath $ConfigPath -Encoding utf8 -Force
-        Write-Log "Created Office 365 configuration file at $ConfigPath"
-        return $true
-    }
-    catch {
-        Write-Log "Failed to create Office 365 configuration file: $($_.Exception.Message)"
-        return $false
-    }
-}
-
-# Main Office installation section
-try {
-    # Create Office 365 configuration XML
-    $xmlSuccess = New-Office365ConfigXml
-    if (-not $xmlSuccess) {
-        Write-Host "Failed to create Office 365 configuration file. Installation cannot proceed." -ForegroundColor Red
-        Write-Log "Office 365 installation aborted due to configuration file creation failure"
-    }
-    else {
-        # Run the installation
-        $installResult = Install-Office365
-        
-        # Verify final status
-        if ($installResult) {
-            Write-Host "Microsoft 365 Apps for enterprise installed successfully." -ForegroundColor Green
-            Write-Log "Microsoft 365 Apps for enterprise installation completed successfully"
-        }
-        else {
-            Write-Host "Microsoft 365 Apps for enterprise installation failed. Check logs for details." -ForegroundColor Red
-            Write-Log "Microsoft 365 Apps for enterprise installation failed"
-        }
-    }
-}
-catch {
-    Write-Host "Error during Office 365 installation process: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Log "Critical error in Office 365 installation process: $($_.Exception.Message)"
-}
-
-############################################################################################################
-#                                        Adobe Acrobat Installation                                        #
-#                                                                                                          #
-############################################################################################################
-# Acrobat Installation
-# Define the URL and file path for the Acrobat Reader installer
-$URL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/Reader_en_install.exe"
-$AcroFilePath = "$env:TEMP\Reader_en_install.exe"
-
-# Download the Acrobat Reader installer
-$ProgressPreference = 'SilentlyContinue'
-$response = Invoke-WebRequest -Uri $URL -Method Head
-$fileSize = $response.Headers["Content-Length"]
-$ProgressPreference = 'Continue'
-Write-Host "Downloading Adobe Acrobat Reader ($fileSize bytes)..."
-
-#$downloadStartTime = Get-Date
-Invoke-WebRequest -Uri $URL -OutFile $AcroFilePath -UseBasicParsing
-#$downloadEndTime = Get-Date
-
-#$downloadDuration = $downloadEndTime - $downloadStartTime
-#Write-Host "Download completed in $($downloadDuration.TotalSeconds) seconds."
-
-$FileSize = (Get-Item $AcroFilePath).Length
-$ExpectedSize = 1628608 # in bytes
-if ($FileSize -eq $ExpectedSize) {
-    # Start the silent installation of Acrobat Reader
-    Write-Host "Starting silent installation of Adobe Acrobat Reader..."
-    $installStartTime = Get-Date
-    Start-Process -FilePath $AcroFilePath -ArgumentList "/sAll /rs /rps /msi /norestart /quiet" -NoNewWindow
-
-    # Monitor the system for the active msiexec.exe process
-    Write-Host "Monitoring for msiexec.exe process..."
-    do {
-        Start-Sleep -Seconds 5
-        $msiexecProcess = Get-Process -Name msiexec -ErrorAction SilentlyContinue
-    } while ($msiexecProcess)
-
-    # Once msiexec.exe process exits, kill the Reader_en_install.exe process
-    Write-Host "msiexec.exe process has exited. Terminating Reader_en_install.exe..."
-    Stop-Process -Name Reader_en_install -Force -ErrorAction SilentlyContinue
-
-    Write-Host "Adobe Acrobat Reader installation complete."
-} else {
-    Write-Host "Download failed. File size does not match." -ForegroundColor "Red"
-    Start-Sleep -Seconds 5
-    Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue | Out-Null
 }
 
 

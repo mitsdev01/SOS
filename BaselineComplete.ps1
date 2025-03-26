@@ -1,6 +1,24 @@
 Clear-Host
 
-Write-Host "MITS - Workstation Baseline Complete Verification"
+function Write-Delayed {
+    param(
+        [string]$Text, 
+        [switch]$NewLine = $true,
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
+    )
+    $currentColor = [Console]::ForegroundColor
+    [Console]::ForegroundColor = $Color
+    foreach ($Char in $Text.ToCharArray()) {
+        [Console]::Write("$Char")
+        Start-Sleep -Milliseconds 25
+    }
+    if ($NewLine) {
+        [Console]::WriteLine()
+    }
+    [Console]::ForegroundColor = $currentColor
+}
+
+Write-Host "SOS - Workstation Baseline Complete Report"
 Write-Output " "
 # Instal Common Stuff 
 $moduleName = "CommonStuff"
