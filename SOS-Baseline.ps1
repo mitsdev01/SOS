@@ -1,5 +1,5 @@
 # SOS - New Workstation Baseline Script
-# Version 1.1.5 
+# Version 1.1.7 
 # ------------------------------------------------------
 
 # Check if running as administrator
@@ -60,16 +60,6 @@ function Write-Delayed {
 function Write-Log {
     param ([string]$Message)
     Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
-}
-
-function Test-Win10 {
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    return $osInfo.Version -lt "10.0.22000" -and $osInfo.Caption -like "*Windows 10*"
-}
-
-function Test-Win11 {
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    return $osInfo.Version -ge "10.0.22000" -and $osInfo.Caption -like "*Windows 11*"
 }
 
 function Write-TaskComplete {
