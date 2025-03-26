@@ -173,7 +173,7 @@ Start-Sleep -Seconds 2
 
 # Check for required modules
 Write-Host "Checking for required modules..."
-Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/wju10755/o365AuditParser/master/Check-Modules.ps1")
+Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1")
 
 ############################################################################################################
 #                                             Start Baseline                                               #
