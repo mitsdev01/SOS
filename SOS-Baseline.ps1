@@ -383,6 +383,7 @@ if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
 }
 #endregion RMMDeployment
 
+<# Uncomment and change $user value to the user you want to use as the local admin account
 ############################################################################################################
 #                                        Account Configuration                                             #
 #                                                                                                          #
@@ -418,7 +419,7 @@ if ($user) {
     }
 }
 #endregion LocalAdminAccount
-
+#>
 
 ############################################################################################################
 #                                        Windows Update Configuration                                      #
@@ -1033,7 +1034,7 @@ try {
             
             $elapsedTime = (Get-Date) - $startTime
             if ($elapsedTime.TotalSeconds -gt $timeout) {
-                Write-Host "Installation timed out after $timeout seconds" -ForegroundColor Yellow
+                #Write-Host "Installation timed out after $timeout seconds" -ForegroundColor Yellow
                 break
             }
         } while ($msiProcess -or $readerProcess)
