@@ -180,7 +180,7 @@ function Test-DattoInstallation {
 #endregion Functions
 
 # Print Script Title
-$ScriptVersion = "1.1.5"
+$ScriptVersion = "1.1.7"
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding -NoNewline
 Print-Middle "SOS - New Workstation Baseline Script"
@@ -1010,7 +1010,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
         New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
         Write-Host "Created C:\temp directory"
     } 
-    
+
 
     # Download the Acrobat Reader installer
     #$ProgressPreference = 'SilentlyContinue'  # Hide progress bar for faster downloads
