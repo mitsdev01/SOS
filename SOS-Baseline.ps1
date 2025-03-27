@@ -186,6 +186,11 @@ function Show-SpinningWait {
     return $result
 }
 
+
+
+
+
+
 function Is-Windows11 {
     $osInfo = Get-WmiObject -Class Win32_OperatingSystem
     $osVersion = $osInfo.Version
@@ -720,7 +725,7 @@ Write-Log "Offline file sync disabled"
 #                                   Profile Customization and Privacy Settings                             #
 #                                                                                                          #
 ############################################################################################################
-#region Profile Customization
+#region Profile Config
 # Get all user SIDs for registry modifications
 $UserSIDs = @()
 Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | 
@@ -1093,166 +1098,7 @@ if ($O365) {
 #                                                                                                          #
 ############################################################################################################
 #region Acrobat Install
-function Write-Delayed {
-    param(
-        [string]$Text, 
-        [switch]$NewLine = $true,
-        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
-    )
-    $currentColor = [Console]::ForegroundColor
-    [Console]::ForegroundColor = $Color
-    foreach ($Char in $Text.ToCharArray()) {
-        [Console]::Write("$Char")
-        Start-Sleep -Milliseconds 25
-    }
-    if ($NewLine) {
-        [Console]::WriteLine()
-    }
-    [Console]::ForegroundColor = $currentColor
-}
 
-function Write-Log {
-    param ([string]$Message)
-    Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
-}
-
-function Show-SpinningWait {
-    param (
-        [Parameter(Mandatory = $true)]
-        [ScriptBlock]$ScriptBlock,
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [string]$DoneMessage = "done."
-    )
-    
-    Write-Delayed "$Message" -NewLine:$false
-    $spinner = @('/', '-', '\', '|')
-    $spinnerIndex = 0
-    $jobName = [Guid]::NewGuid().ToString()
-    
-    # Start the script block as a job
-    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock
-    
-    # Display spinner while job is running
-    while ($job.State -eq 'Running') {
-        [Console]::Write($spinner[$spinnerIndex])
-        Start-Sleep -Milliseconds 100
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-    }
-    
-    # Get the job result
-    $result = Receive-Job -Name $jobName
-    Remove-Job -Name $jobName
-    
-    # Replace spinner with done message
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write($DoneMessage)
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    
-    return $result
-}
-
-function Show-SpinnerWithProgressBar {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [Parameter(Mandatory = $true)]
-        [string]$URL,
-        [Parameter(Mandatory = $true)]
-        [string]$OutFile,
-        [string]$DoneMessage = "done."
-    )
-    
-    Write-Delayed "$Message" -NewLine:$false
-    
-    # Create a folder for storing communication files between jobs
-    $tempFolder = "$env:TEMP\spinner_comm"
-    if (-not (Test-Path $tempFolder)) {
-        New-Item -Path $tempFolder -ItemType Directory -Force | Out-Null
-    }
-    $spinnerFile = "$tempFolder\spinner_pos.txt"
-    $completeFile = "$tempFolder\spinner_complete.txt"
-    
-    # Store initial cursor position
-    $cursorTop = [Console]::CursorTop
-    $cursorLeft = [Console]::CursorLeft
-    Set-Content -Path $spinnerFile -Value "$cursorTop,$cursorLeft" -Force
-    
-    # Start a background job to show spinner
-    $spinnerJob = Start-Job -ScriptBlock {
-        param($spinnerFile, $completeFile)
-        
-        $spinner = @('/', '-', '\', '|')
-        $spinnerIndex = 0
-        $running = $true
-        
-        while ($running) {
-            # Get the position where to write the spinner
-            if (Test-Path $spinnerFile) {
-                $posContent = Get-Content $spinnerFile
-                if ($posContent -match "(\d+),(\d+)") {
-                    $cursorTop = [int]$Matches[1]
-                    $cursorLeft = [int]$Matches[2]
-                    
-                    # Save current position
-                    $currentTop = [Console]::CursorTop
-                    $currentLeft = [Console]::CursorLeft
-                    
-                    # Move to spinner position and write it
-                    [Console]::SetCursorPosition($cursorLeft, $cursorTop)
-                    [Console]::Write($spinner[$spinnerIndex])
-                    
-                    # Restore previous position
-                    [Console]::SetCursorPosition($currentLeft, $currentTop)
-                    
-                    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-                }
-            }
-            
-            # Check if we should stop
-            if (Test-Path $completeFile) {
-                $running = $false
-                break
-            }
-            
-            Start-Sleep -Milliseconds 100
-        }
-    } -ArgumentList $spinnerFile, $completeFile
-    
-    try {
-        # Download the file with progress bar showing
-        $ProgressPreference = 'Continue'
-        Invoke-WebRequest -Uri $URL -OutFile $OutFile -UseBasicParsing
-    }
-    finally {
-        # Signal spinner to stop
-        Set-Content -Path $completeFile -Value "done" -Force
-        
-        # Give spinner a moment to see the signal
-        Start-Sleep -Milliseconds 200
-        
-        # Clean up the job
-        Stop-Job -Job $spinnerJob
-        Remove-Job -Job $spinnerJob
-        
-        # Clean up temp files
-        if (Test-Path $spinnerFile) { Remove-Item -Path $spinnerFile -Force }
-        if (Test-Path $completeFile) { Remove-Item -Path $completeFile -Force }
-        
-        # Move cursor to original position
-        [Console]::SetCursorPosition($cursorLeft, $cursorTop)
-        
-        # Replace spinner with done message
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write($DoneMessage)
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-    }
-}
-
-#region Acrobat Installation
 # Initialize log file if not already defined
 if (-not (Get-Variable -Name LogFile -ErrorAction SilentlyContinue)) {
     $LogFile = "$env:TEMP\AcrobatInstallation.log"
