@@ -77,84 +77,54 @@ function Show-SpinnerWithProgressBar {
     
     Write-Delayed "$Message" -NewLine:$false
     
-    # Create a folder for storing communication files between jobs
-    $tempFolder = "$env:TEMP\spinner_comm"
-    if (-not (Test-Path $tempFolder)) {
-        New-Item -Path $tempFolder -ItemType Directory -Force | Out-Null
+    # Create parent directory for output file if it doesn't exist
+    $outDir = Split-Path -Parent $OutFile
+    if (-not (Test-Path $outDir)) {
+        New-Item -Path $outDir -ItemType Directory -Force | Out-Null
     }
-    $spinnerFile = "$tempFolder\spinner_pos.txt"
-    $completeFile = "$tempFolder\spinner_complete.txt"
     
-    # Store initial cursor position
-    $cursorTop = [Console]::CursorTop
-    $cursorLeft = [Console]::CursorLeft
-    Set-Content -Path $spinnerFile -Value "$cursorTop,$cursorLeft" -Force
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    $done = $false
     
-    # Start a background job to show spinner
-    $spinnerJob = Start-Job -ScriptBlock {
-        param($spinnerFile, $completeFile)
-        
-        $spinner = @('/', '-', '\', '|')
-        $spinnerIndex = 0
-        $running = $true
-        
-        while ($running) {
-            # Get the position where to write the spinner
-            if (Test-Path $spinnerFile) {
-                $posContent = Get-Content $spinnerFile
-                if ($posContent -match "(\d+),(\d+)") {
-                    $cursorTop = [int]$Matches[1]
-                    $cursorLeft = [int]$Matches[2]
-                    
-                    # Save current position
-                    $currentTop = [Console]::CursorTop
-                    $currentLeft = [Console]::CursorLeft
-                    
-                    # Move to spinner position and write it
-                    [Console]::SetCursorPosition($cursorLeft, $cursorTop)
-                    [Console]::Write($spinner[$spinnerIndex])
-                    
-                    # Restore previous position
-                    [Console]::SetCursorPosition($currentLeft, $currentTop)
-                    
-                    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-                }
-            }
-            
-            # Check if we should stop
-            if (Test-Path $completeFile) {
-                $running = $false
-                break
-            }
-            
-            Start-Sleep -Milliseconds 100
-        }
-    } -ArgumentList $spinnerFile, $completeFile
+    # Start download in a separate runspace
+    $runspace = [runspacefactory]::CreateRunspace()
+    $runspace.Open()
+    $powerShell = [powershell]::Create()
+    $powerShell.Runspace = $runspace
     
+    # Add script to download file
+    [void]$powerShell.AddScript({
+        param($URL, $OutFile)
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($URL, $OutFile)
+    }).AddArgument($URL).AddArgument($OutFile)
+    
+    # Start the download asynchronously
+    $handle = $powerShell.BeginInvoke()
+    
+    # Display spinner while downloading
     try {
-        # Download the file with progress bar showing
-        $ProgressPreference = 'Continue'
-        Invoke-WebRequest -Uri $URL -OutFile $OutFile -UseBasicParsing
+        while (-not $handle.IsCompleted) {
+            # Write the current spinner character
+            [Console]::Write($spinner[$spinnerIndex])
+            Start-Sleep -Milliseconds 100
+            [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+            $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        }
+        
+        # Complete the async operation
+        $powerShell.EndInvoke($handle)
+    }
+    catch {
+        Write-Host "`nError during download: $_" -ForegroundColor Red
     }
     finally {
-        # Signal spinner to stop
-        Set-Content -Path $completeFile -Value "done" -Force
+        # Clean up resources
+        $powerShell.Dispose()
+        $runspace.Dispose()
         
-        # Give spinner a moment to see the signal
-        Start-Sleep -Milliseconds 200
-        
-        # Clean up the job
-        Stop-Job -Job $spinnerJob
-        Remove-Job -Job $spinnerJob
-        
-        # Clean up temp files
-        if (Test-Path $spinnerFile) { Remove-Item -Path $spinnerFile -Force }
-        if (Test-Path $completeFile) { Remove-Item -Path $completeFile -Force }
-        
-        # Move cursor to original position
-        [Console]::SetCursorPosition($cursorLeft, $cursorTop)
-        
-        # Replace spinner with done message
+        # Display completion message
         [Console]::ForegroundColor = [System.ConsoleColor]::Green
         [Console]::Write($DoneMessage)
         [Console]::ResetColor()

@@ -1,0 +1,369 @@
+# Check if running as administrator
+if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-Host "This script must be run as an Administrator!" -ForegroundColor Red
+    Start-Sleep -Seconds 8
+    return
+}
+
+# Initial setup
+Set-ExecutionPolicy RemoteSigned -Force *> $null
+$ScriptVersion = "1.2.3"
+$ErrorActionPreference = 'SilentlyContinue'
+$WarningPreference = 'SilentlyContinue'
+$TempFolder = "C:\temp"
+$LogFile = "$TempFolder\baseline.log"
+
+
+# Create required directories
+if (-not (Test-Path $TempFolder)) { New-Item -Path $TempFolder -ItemType Directory | Out-Null }
+if (-not (Test-Path $LogFile)) { New-Item -Path $LogFile -ItemType File | Out-Null }
+
+# Set working directory
+Set-Location -Path $TempFolder
+
+# Start transcript logging
+Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
+
+# Add the required Win32 API functions
+Add-Type -TypeDefinition @"
+    using System;
+    using System.Runtime.InteropServices;
+    
+    namespace Win32 {
+        public class User32 {
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        }
+    }
+"@
+
+# Clear console window
+Clear-Host
+
+
+############################################################################################################
+#                                                 Functions                                                #
+#                                                                                                          #
+############################################################################################################
+#region Functions
+function Print-Middle($Message, $Color = "White") {
+    Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
+    Write-Host -ForegroundColor $Color $Message
+}
+
+function Write-Delayed {
+    param(
+        [string]$Text, 
+        [switch]$NewLine = $true,
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
+    )
+    $currentColor = [Console]::ForegroundColor
+    [Console]::ForegroundColor = $Color
+    foreach ($Char in $Text.ToCharArray()) {
+        [Console]::Write("$Char")
+        Start-Sleep -Milliseconds 25
+    }
+    if ($NewLine) {
+        [Console]::WriteLine()
+    }
+    [Console]::ForegroundColor = $currentColor
+}
+
+function Write-Log {
+    param ([string]$Message)
+    Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
+}
+
+function Write-TaskComplete {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write(" done.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+}
+
+function Write-TaskFailed {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write(" failed.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+}
+
+function Move-ProcessWindowToTopRight {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$processName
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $processes = Get-Process | Where-Object { $_.ProcessName -eq $processName }
+    
+    foreach ($process in $processes) {
+        $hwnd = $process.MainWindowHandle
+        if ($hwnd -eq [IntPtr]::Zero) { continue }
+        
+        $x = $screen.Right - 800
+        $y = $screen.Top
+        
+        [void][Win32.User32]::SetWindowPos($hwnd, -1, $x, $y, 800, 600, 0x0040)
+    }
+}
+
+function Is-Windows11 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 11
+    return $osVersion -ge "10.0.22000" -and $osProduct -like "*Windows 11*"
+}
+
+function Is-Windows10 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 10
+    return $osVersion -lt "10.0.22000" -and $osProduct -like "*Windows 10*"
+}
+
+function Test-DattoInstallation {
+    $service = Get-Service $agentName -ErrorAction SilentlyContinue
+    $serviceExists = $null -ne $service
+    $filesExist = Test-Path $agentPath
+    
+    return @{
+        ServiceExists = $serviceExists
+        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
+        FilesExist = $filesExist
+    }
+}
+
+function Show-SpinningWait {
+    param (
+        [Parameter(Mandatory = $true)]
+        [ScriptBlock]$ScriptBlock,
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [string]$DoneMessage = "done."
+    )
+    
+    Write-Delayed "$Message" -NewLine:$false
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    $jobName = [Guid]::NewGuid().ToString()
+    
+    # Start the script block as a job
+    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock
+    
+    # Display spinner while job is running
+    while ($job.State -eq 'Running') {
+        [Console]::Write($spinner[$spinnerIndex])
+        Start-Sleep -Milliseconds 100
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    }
+    
+    # Get the job result
+    $result = Receive-Job -Name $jobName
+    Remove-Job -Name $jobName
+    
+    # Replace spinner with done message
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write($DoneMessage)
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
+    return $result
+}
+
+function Show-SpinnerWithProgressBar {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $true)]
+        [string]$URL,
+        [Parameter(Mandatory = $true)]
+        [string]$OutFile,
+        [string]$DoneMessage = "done."
+    )
+    
+    Write-Delayed "$Message" -NewLine:$false
+    
+    # Create a folder for storing communication files between jobs
+    $tempFolder = "$env:TEMP\spinner_comm"
+    if (-not (Test-Path $tempFolder)) {
+        New-Item -Path $tempFolder -ItemType Directory -Force | Out-Null
+    }
+    $spinnerFile = "$tempFolder\spinner_pos.txt"
+    $completeFile = "$tempFolder\spinner_complete.txt"
+    
+    # Store initial cursor position
+    $cursorTop = [Console]::CursorTop
+    $cursorLeft = [Console]::CursorLeft
+    Set-Content -Path $spinnerFile -Value "$cursorTop,$cursorLeft" -Force
+    
+    # Start a background job to show spinner
+    $spinnerJob = Start-Job -ScriptBlock {
+        param($spinnerFile, $completeFile)
+        
+        $spinner = @('/', '-', '\', '|')
+        $spinnerIndex = 0
+        $running = $true
+        
+        while ($running) {
+            # Get the position where to write the spinner
+            if (Test-Path $spinnerFile) {
+                $posContent = Get-Content $spinnerFile
+                if ($posContent -match "(\d+),(\d+)") {
+                    $cursorTop = [int]$Matches[1]
+                    $cursorLeft = [int]$Matches[2]
+                    
+                    # Save current position
+                    $currentTop = [Console]::CursorTop
+                    $currentLeft = [Console]::CursorLeft
+                    
+                    # Move to spinner position and write it
+                    [Console]::SetCursorPosition($cursorLeft, $cursorTop)
+                    [Console]::Write($spinner[$spinnerIndex])
+                    
+                    # Restore previous position
+                    [Console]::SetCursorPosition($currentLeft, $currentTop)
+                    
+                    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+                }
+            }
+            
+            # Check if we should stop
+            if (Test-Path $completeFile) {
+                $running = $false
+                break
+            }
+            
+            Start-Sleep -Milliseconds 100
+        }
+    } -ArgumentList $spinnerFile, $completeFile
+    
+    try {
+        # Download the file with progress bar showing
+        $ProgressPreference = 'Continue'
+        Invoke-WebRequest -Uri $URL -OutFile $OutFile -UseBasicParsing
+    }
+    finally {
+        # Signal spinner to stop
+        Set-Content -Path $completeFile -Value "done" -Force
+        
+        # Give spinner a moment to see the signal
+        Start-Sleep -Milliseconds 200
+        
+        # Clean up the job
+        Stop-Job -Job $spinnerJob
+        Remove-Job -Job $spinnerJob
+        
+        # Clean up temp files
+        if (Test-Path $spinnerFile) { Remove-Item -Path $spinnerFile -Force }
+        if (Test-Path $completeFile) { Remove-Item -Path $completeFile -Force }
+        
+        # Move cursor to original position
+        [Console]::SetCursorPosition($cursorLeft, $cursorTop)
+        
+        # Replace spinner with done message
+        [Console]::ForegroundColor = [System.ConsoleColor]::Green
+        [Console]::Write($DoneMessage)
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+    }
+}
+
+#endregion Functions
+
+############################################################################################################
+#                                             Title Screen                                                 #
+#                                                                                                          #
+############################################################################################################
+#region Title Screen
+
+# Print Scritp Title
+$Padding = ("=" * [System.Console]::BufferWidth)
+Write-Host -ForegroundColor "Green" $Padding -NoNewline
+Print-Middle "SOS - New Workstation Baseline Script"
+Write-Host -ForegroundColor Yellow "                                                   version $ScriptVersion"
+Write-Host -ForegroundColor "Green" -NoNewline $Padding
+Write-Host "  "
+Start-Sleep -Seconds 2
+
+
+############################################################################################################
+#                                             Start Baseline                                               #
+#                                                                                                          #
+############################################################################################################
+# Start baseline
+# Check for required modules
+Write-Host "Checking for required modules..." -NoNewline
+$spinner = @('/', '-', '\', '|')
+$spinnerIndex = 0
+$originalCursorLeft = [Console]::CursorLeft
+$originalCursorTop = [Console]::CursorTop
+
+# Create a job to run the module check and display a spinner
+$job = Start-Job -ScriptBlock {
+    # Run the module check
+    Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1")
+}
+
+# Display spinner while job is running
+try {
+    while ($job.State -eq 'Running') {
+        [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
+        [Console]::Write($spinner[$spinnerIndex])
+        Start-Sleep -Milliseconds 100
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    }
+    
+    # Handle job completion
+    $jobResult = Receive-Job -Job $job
+    Remove-Job -Job $job -Force
+    
+    # Clear spinner character
+    [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
+    [Console]::Write(" ")
+    
+    # Display completion message
+    [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write("done.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
+    Write-Log "Module check completed successfully"
+}
+catch {
+    # Stop the job if it's still running
+    if ($job.State -eq 'Running') {
+        Stop-Job -Job $job
+        Remove-Job -Job $job -Force
+    }
+    
+    # Clear spinner character
+    [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
+    [Console]::Write(" ")
+    
+    # Display error message
+    [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write("failed.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Log "Module check failed: $($_.Exception.Message)"
+}
+
+[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
+[Console]::Write("`n")
+Write-Delayed "Starting workstation baseline..." -NewLine:$false
+[Console]::Write("`n")
+[Console]::ResetColor() 
+[Console]::WriteLine()
+Start-Sleep -Seconds 2
+
+# Start baseline log file
+Write-Log "Automated workstation baseline has started" 
