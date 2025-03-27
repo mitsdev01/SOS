@@ -1,5 +1,5 @@
 # SOS - New Workstation Baseline Script
-# Version 1.1.7 
+# Version 1.1.8 
 # ------------------------------------------------------
 
 # Check if running as administrator
@@ -180,7 +180,7 @@ function Test-DattoInstallation {
 #endregion Functions
 
 # Print Script Title
-$ScriptVersion = "1.1.7"
+$ScriptVersion = "1.1.8"
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding -NoNewline
 Print-Middle "SOS - New Workstation Baseline Script"
