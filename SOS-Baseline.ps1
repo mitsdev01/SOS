@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                   Version 1.2.2                                        #
+#                                                   Version 1.2.3                                        #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.2.2
+    Version:        1.2.3
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.2.2"
+$ScriptVersion = "1.2.3"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -337,8 +337,50 @@ Start-Sleep -Seconds 2
 ############################################################################################################
 # Start baseline
 # Check for required modules
-Write-Host "Checking for required modules..."
-Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1")
+Write-Host "Checking for required modules..." -NoNewline
+$spinner = @('/', '-', '\', '|')
+$spinnerIndex = 0
+
+# Create a job to display the spinner
+$spinnerJob = Start-Job -ScriptBlock {
+    param($spinnerChars)
+    while ($true) {
+        foreach ($spinChar in $spinnerChars) {
+            Write-Host "`b$spinChar" -NoNewline
+            Start-Sleep -Milliseconds 100
+        }
+    }
+} -ArgumentList $spinner
+
+# Invoke the modules check script
+try {
+    Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1") | Out-Null
+    
+    # Stop the spinner job
+    Stop-Job -Job $spinnerJob
+    Remove-Job -Job $spinnerJob -Force
+    
+    # Display done in green text
+    Write-Host "`b " -NoNewline
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write("done.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+}
+catch {
+    # Stop the spinner job on error
+    Stop-Job -Job $spinnerJob
+    Remove-Job -Job $spinnerJob -Force
+    
+    # Display failed in red text
+    Write-Host "`b " -NoNewline
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write("failed.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+}
+
 [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
 [Console]::Write("`n")
 Write-Delayed "Starting workstation baseline..." -NewLine:$false
