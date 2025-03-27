@@ -340,17 +340,27 @@ Start-Sleep -Seconds 2
 Write-Host "Checking for required modules..." -NoNewline
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
+$originalCursorLeft = [Console]::CursorLeft
+$originalCursorTop = [Console]::CursorTop
 
-# Create a job to display the spinner
-$spinnerJob = Start-Job -ScriptBlock {
-    param($spinnerChars)
+# Create a scriptblock for the spinner
+$spinnerScriptBlock = {
+    param($spinnerChars, $cursorLeft, $cursorTop)
+    
+    $spinnerIndex = 0
     while ($true) {
-        foreach ($spinChar in $spinnerChars) {
-            Write-Host "`b$spinChar" -NoNewline
-            Start-Sleep -Milliseconds 100
-        }
+        [Console]::SetCursorPosition($cursorLeft, $cursorTop)
+        [Console]::Write($spinnerChars[$spinnerIndex])
+        Start-Sleep -Milliseconds 100
+        $spinnerIndex = ($spinnerIndex + 1) % $spinnerChars.Length
     }
-} -ArgumentList $spinner
+}
+
+# Start the spinner in a job
+$spinnerJob = Start-Job -ScriptBlock $spinnerScriptBlock -ArgumentList $spinner, $originalCursorLeft, $originalCursorTop
+
+# Wait a moment to ensure the job has started
+Start-Sleep -Milliseconds 200
 
 # Invoke the modules check script
 try {
@@ -360,8 +370,10 @@ try {
     Stop-Job -Job $spinnerJob
     Remove-Job -Job $spinnerJob -Force
     
-    # Display done in green text
-    Write-Host "`b " -NoNewline
+    # Clear spinner character and display done message
+    [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
+    [Console]::Write(" ")
+    [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
     [Console]::ForegroundColor = [System.ConsoleColor]::Green
     [Console]::Write("done.")
     [Console]::ResetColor()
@@ -372,8 +384,10 @@ catch {
     Stop-Job -Job $spinnerJob
     Remove-Job -Job $spinnerJob -Force
     
-    # Display failed in red text
-    Write-Host "`b " -NoNewline
+    # Clear spinner character and display failed message
+    [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
+    [Console]::Write(" ")
+    [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
     [Console]::ForegroundColor = [System.ConsoleColor]::Red
     [Console]::Write("failed.")
     [Console]::ResetColor()
