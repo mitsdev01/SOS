@@ -1518,6 +1518,7 @@ $scriptPath = "c:\temp\BaselineComplete.ps1"
 Invoke-Expression "start powershell -ArgumentList '-noexit','-File $scriptPath'"
 Write-Host " "
 Write-Host " "
+#endregion Summary
 
 # Stopping transcript
 Stop-Transcript | Out-Null
@@ -1527,4 +1528,3 @@ Write-Log "Automated workstation baseline has completed successfully"
 
 Read-Host -Prompt "Press enter to exit"
 Stop-Process -Id $PID -Force
-#endregion Summary
