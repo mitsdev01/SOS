@@ -400,24 +400,24 @@ $user = Get-LocalUser -Name 'sosadmin' -ErrorAction SilentlyContinue
 if ($user) {
     # Check if the password is set to 'Never Expire'
     if (-not $user.PasswordNeverExpires) {
-        Write-Delayed "Setting mitsadmin password to 'Never Expire'..." -NewLine:$false
+        Write-Delayed "Setting sosadmin password to 'Never Expire'..." -NewLine:$false
         $user | Set-LocalUser -PasswordNeverExpires $true
         Write-TaskComplete
-        Write-Log "Set mitsadmin password to never expire"
+        Write-Log "Set sosadmin password to never expire"
     }
 } else {
-    Write-Host "Creating local mitsadmin & setting password to 'Never Expire'..." -NoNewline
-    $Password = ConvertTo-SecureString "@dvances10755" -AsPlainText -Force
-    New-LocalUser "mitsadmin" -Password $Password -FullName "MITS Admin" -Description "MITSADMIN Account" *> $null
-    $newUser = Get-LocalUser -Name 'mitsadmin' -ErrorAction SilentlyContinue
+    Write-Host "Creating local sosadmin & setting password to 'Never Expire'..." -NoNewline
+    $Password = ConvertTo-SecureString "setpasswordhere" -AsPlainText -Force
+    New-LocalUser "sosadmin" -Password $Password -FullName "MITS Admin" -Description "SOSADMIN Account" *> $null
+    $newUser = Get-LocalUser -Name 'sosadmin' -ErrorAction SilentlyContinue
     if ($newUser) {
         $newUser | Set-LocalUser -PasswordNeverExpires $true
-        Add-LocalGroupMember -Group "Administrators" -Member "mitsadmin"
+        Add-LocalGroupMember -Group "Administrators" -Member "sosadmin"
         Write-TaskComplete
-        Write-Log "Created mitsadmin local admin account with non-expiring password"
+        Write-Log "Created sosadmin local admin account with non-expiring password"
     } else {
         Write-TaskFailed
-        Write-Log "Failed to create mitsadmin account"
+        Write-Log "Failed to create sosadmin account"
     }
 }
 #endregion LocalAdminAccount
