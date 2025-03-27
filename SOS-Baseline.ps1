@@ -1,5 +1,5 @@
 # SOS - New Workstation Baseline Script
-# Version 1.1.8 
+# Version 1.1.9 
 # ------------------------------------------------------
 
 # Check if running as administrator
@@ -180,7 +180,7 @@ function Test-DattoInstallation {
 #endregion Functions
 
 # Print Script Title
-$ScriptVersion = "1.1.8"
+$ScriptVersion = "1.1.9"
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding -NoNewline
 Print-Middle "SOS - New Workstation Baseline Script"
@@ -1253,7 +1253,7 @@ Write-Host -ForegroundColor "Green" $Padding
 Write-Host -ForegroundColor "Cyan" "Logs are available at:"
 Write-Host "  * $LogFile"
 Write-Host "  * $TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
-Invoke-WebRequest -uri "https://github.com/mitsdev01/SOS/blob/main/BaselineComplete.ps1" -OutFile "c:\temp\BaselineComplete.ps1"
+Invoke-WebRequest -uri "https://raw.githubusercontent.com/mitsdev01/SOS/main/BaselineComplete.ps1" -OutFile "c:\temp\BaselineComplete.ps1"
 $scriptPath = "c:\temp\BaselineComplete.ps1"
 Invoke-Expression "start powershell -ArgumentList '-noexit','-File $scriptPath'"
 Write-Host " "
