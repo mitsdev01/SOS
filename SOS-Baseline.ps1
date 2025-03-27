@@ -148,6 +148,34 @@ function Move-ProcessWindowToTopRight {
     }
 }
 
+function Is-Windows11 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 11
+    return $osVersion -ge "10.0.22000" -and $osProduct -like "*Windows 11*"
+}
+
+function Is-Windows10 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 10
+    return $osVersion -lt "10.0.22000" -and $osProduct -like "*Windows 10*"
+}
+
+function Test-DattoInstallation {
+    $service = Get-Service $agentName -ErrorAction SilentlyContinue
+    $serviceExists = $null -ne $service
+    $filesExist = Test-Path $agentPath
+    
+    return @{
+        ServiceExists = $serviceExists
+        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
+        FilesExist = $filesExist
+    }
+}
+
 function Show-SpinningWait {
     param (
         [Parameter(Mandatory = $true)]
@@ -186,38 +214,104 @@ function Show-SpinningWait {
     return $result
 }
 
-
-
-
-
-
-function Is-Windows11 {
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    $osVersion = $osInfo.Version
-    $osProduct = $osInfo.Caption
-    # Check for Windows 11
-    return $osVersion -ge "10.0.22000" -and $osProduct -like "*Windows 11*"
-}
-
-function Is-Windows10 {
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    $osVersion = $osInfo.Version
-    $osProduct = $osInfo.Caption
-    # Check for Windows 10
-    return $osVersion -lt "10.0.22000" -and $osProduct -like "*Windows 10*"
-}
-
-function Test-DattoInstallation {
-    $service = Get-Service $agentName -ErrorAction SilentlyContinue
-    $serviceExists = $null -ne $service
-    $filesExist = Test-Path $agentPath
+function Show-SpinnerWithProgressBar {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $true)]
+        [string]$URL,
+        [Parameter(Mandatory = $true)]
+        [string]$OutFile,
+        [string]$DoneMessage = "done."
+    )
     
-    return @{
-        ServiceExists = $serviceExists
-        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
-        FilesExist = $filesExist
+    Write-Delayed "$Message" -NewLine:$false
+    
+    # Create a folder for storing communication files between jobs
+    $tempFolder = "$env:TEMP\spinner_comm"
+    if (-not (Test-Path $tempFolder)) {
+        New-Item -Path $tempFolder -ItemType Directory -Force | Out-Null
+    }
+    $spinnerFile = "$tempFolder\spinner_pos.txt"
+    $completeFile = "$tempFolder\spinner_complete.txt"
+    
+    # Store initial cursor position
+    $cursorTop = [Console]::CursorTop
+    $cursorLeft = [Console]::CursorLeft
+    Set-Content -Path $spinnerFile -Value "$cursorTop,$cursorLeft" -Force
+    
+    # Start a background job to show spinner
+    $spinnerJob = Start-Job -ScriptBlock {
+        param($spinnerFile, $completeFile)
+        
+        $spinner = @('/', '-', '\', '|')
+        $spinnerIndex = 0
+        $running = $true
+        
+        while ($running) {
+            # Get the position where to write the spinner
+            if (Test-Path $spinnerFile) {
+                $posContent = Get-Content $spinnerFile
+                if ($posContent -match "(\d+),(\d+)") {
+                    $cursorTop = [int]$Matches[1]
+                    $cursorLeft = [int]$Matches[2]
+                    
+                    # Save current position
+                    $currentTop = [Console]::CursorTop
+                    $currentLeft = [Console]::CursorLeft
+                    
+                    # Move to spinner position and write it
+                    [Console]::SetCursorPosition($cursorLeft, $cursorTop)
+                    [Console]::Write($spinner[$spinnerIndex])
+                    
+                    # Restore previous position
+                    [Console]::SetCursorPosition($currentLeft, $currentTop)
+                    
+                    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+                }
+            }
+            
+            # Check if we should stop
+            if (Test-Path $completeFile) {
+                $running = $false
+                break
+            }
+            
+            Start-Sleep -Milliseconds 100
+        }
+    } -ArgumentList $spinnerFile, $completeFile
+    
+    try {
+        # Download the file with progress bar showing
+        $ProgressPreference = 'Continue'
+        Invoke-WebRequest -Uri $URL -OutFile $OutFile -UseBasicParsing
+    }
+    finally {
+        # Signal spinner to stop
+        Set-Content -Path $completeFile -Value "done" -Force
+        
+        # Give spinner a moment to see the signal
+        Start-Sleep -Milliseconds 200
+        
+        # Clean up the job
+        Stop-Job -Job $spinnerJob
+        Remove-Job -Job $spinnerJob
+        
+        # Clean up temp files
+        if (Test-Path $spinnerFile) { Remove-Item -Path $spinnerFile -Force }
+        if (Test-Path $completeFile) { Remove-Item -Path $completeFile -Force }
+        
+        # Move cursor to original position
+        [Console]::SetCursorPosition($cursorLeft, $cursorTop)
+        
+        # Replace spinner with done message
+        [Console]::ForegroundColor = [System.ConsoleColor]::Green
+        [Console]::Write($DoneMessage)
+        [Console]::ResetColor()
+        [Console]::WriteLine()
     }
 }
+
 
 #endregion Functions
 
