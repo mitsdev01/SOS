@@ -1,6 +1,40 @@
-# SOS - New Workstation Baseline Script
-# Version 1.1.9 
-# ------------------------------------------------------
+############################################################################################################
+#                                     SOS - New Workstation Baseline Script                                #
+#                                                   Version 1.1.9                                          #
+############################################################################################################
+<#
+.SYNOPSIS
+    Automates the configuration and deployment of a standardized Windows workstation environment.
+
+.DESCRIPTION
+    This script performs a comprehensive baseline setup for new Windows 10/11 workstations including:
+    - Datto RMM agent deployment
+    - Power profile optimization
+    - System configuration and hardening
+    - Windows Update management
+    - Microsoft 365 and Adobe Acrobat installation
+    - Removal of bloatware and unnecessary features
+    - BitLocker encryption configuration
+    - System restore point creation
+
+.PARAMETER None
+    This script does not accept parameters.
+
+.NOTES
+    Version:        1.1.9
+    Author:         Bill Ulrich
+    Creation Date:  3/25/2025
+    Requires:       Administrator privileges
+                    Windows 10/11 Professional or Enterprise
+    
+.EXAMPLE
+    .\SOS-Baseline.ps1
+    
+    Run the script with administrator privileges to execute the full baseline configuration.
+
+.LINK
+    https://github.com/mitsdev01/SOS
+#>
 
 # Check if running as administrator
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
