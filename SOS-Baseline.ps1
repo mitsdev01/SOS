@@ -987,9 +987,6 @@ function Show-SpinningWait {
     return $result
 }
 
-
-
-
 # Install Office 365
 $O365 = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
                              HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
