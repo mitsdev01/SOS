@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                   Version 1.1.9                                          #
+#                                                   Version 1.2.0                                         #
 ############################################################################################################
 <#
 .SYNOPSIS
@@ -21,7 +21,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.1.9
+    Version:        1.2.0
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -214,7 +214,7 @@ function Test-DattoInstallation {
 #endregion Functions
 
 # Print Script Title
-$ScriptVersion = "1.1.9"
+$ScriptVersion = "1.2.0"
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding -NoNewline
 Print-Middle "SOS - New Workstation Baseline Script"
