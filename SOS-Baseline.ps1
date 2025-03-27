@@ -2,6 +2,7 @@
 #                                     SOS - New Workstation Baseline Script                                #
 #                                                   Version 1.2.0                                         #
 ############################################################################################################
+#region Synopsis
 <#
 .SYNOPSIS
     Automates the configuration and deployment of a standardized Windows workstation environment.
@@ -60,8 +61,22 @@ Set-Location -Path $TempFolder
 # Start transcript logging
 Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
 
+# Add the required Win32 API functions
+Add-Type -TypeDefinition @"
+    using System;
+    using System.Runtime.InteropServices;
+    
+    namespace Win32 {
+        public class User32 {
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        }
+    }
+"@
+
 # Clear console window
 Clear-Host
+
 
 ############################################################################################################
 #                                                 Functions                                                #
@@ -132,19 +147,6 @@ function Move-ProcessWindowToTopRight {
     }
 }
 
-# Add the required Win32 API functions
-Add-Type -TypeDefinition @"
-    using System;
-    using System.Runtime.InteropServices;
-    
-    namespace Win32 {
-        public class User32 {
-            [DllImport("user32.dll", SetLastError = true)]
-            public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-        }
-    }
-"@
-
 function Show-SpinningWait {
     param (
         [Parameter(Mandatory = $true)]
@@ -213,7 +215,13 @@ function Test-DattoInstallation {
 
 #endregion Functions
 
-# Print Script Title
+############################################################################################################
+#                                             Title Screen                                                 #
+#                                                                                                          #
+############################################################################################################
+#region Title Screen
+
+# Print Scritp Title
 $ScriptVersion = "1.2.0"
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding -NoNewline
@@ -223,15 +231,15 @@ Write-Host -ForegroundColor "Green" -NoNewline $Padding
 Write-Host "  "
 Start-Sleep -Seconds 2
 
-# Check for required modules
-Write-Host "Checking for required modules..."
-Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1")
 
 ############################################################################################################
 #                                             Start Baseline                                               #
 #                                                                                                          #
 ############################################################################################################
 # Start baseline
+# Check for required modules
+Write-Host "Checking for required modules..."
+Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1")
 [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
 [Console]::Write("`n")
 Write-Delayed "Starting workstation baseline..." -NewLine:$false
@@ -295,7 +303,7 @@ while ($true) {
 #                                              Datto RMM Deployment                                        #
 #                                                                                                          #
 ############################################################################################################
-#region RMM Deployment
+#region RMM Install
 
 # Agent Installation Configuration
 $file = "$TempFolder\AgentSetup_Standard+Office+Systems+MITS.exe"
@@ -424,7 +432,7 @@ if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
 #                                        Account Configuration                                             #
 #                                                                                                          #
 ############################################################################################################
-#region LocalAdminAccount
+#region Local Admin 
 # ---------------------------------------------------------------------
 # Configure Local Admin Account
 # ---------------------------------------------------------------------
@@ -461,7 +469,7 @@ if ($user) {
 #                                        Windows Update Configuration                                      #
 #                                                                                                          #
 ############################################################################################################
-#region WindowsUpdate
+#region Windows Update
 Write-Delayed "Suspending Windows Update..." -NewLine:$false
 try {
     # Stop the Windows Update service
@@ -491,7 +499,7 @@ try {
 #                                        Power Profile Configuration                                       #
 #                                                                                                          #
 ############################################################################################################
-#region PowerProfile
+#region Power Profile
 Write-Delayed "Configuring Power Profile for all devices..." -NewLine:$false
 Start-Sleep -Seconds 2
 
@@ -554,14 +562,14 @@ Write-Delayed "Syncing system clock..." -NewLine:$false
 w32tm /resync -ErrorAction SilentlyContinue | Out-Null
 Write-TaskComplete
 Write-Log "Synced system clock"
-#endregion SystemTime
+#endregion System Time
 
 
 ############################################################################################################
 #                                        Bitlocker Configuration                                           #
 #                                                                                                          #
 ############################################################################################################
-#region Capability Check
+#region Bitlocker
 # Check Bitlocker Compatibility -v2
 $WindowsVer = Get-WmiObject -Query 'select * from Win32_OperatingSystem where (Version like "6.2%" or Version like "6.3%" or Version like "10.0%") and ProductType = "1"' -ErrorAction SilentlyContinue
 $TPM = Get-WmiObject -Namespace root\cimv2\security\microsofttpm -Class Win32_Tpm -ErrorAction SilentlyContinue
@@ -666,14 +674,14 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
     Write-Log "Skipping Bitlocker Drive Encryption due to device not meeting hardware requirements."
     Start-Sleep -Seconds 1
 }
-#region Configure Bitlocker
+#endregion Bitlocker
 
 
 ############################################################################################################
 #                                        System Restore Configuration                                      #
 #                                                                                                          #
 ############################################################################################################
-#region SystemRestore
+#region System Restore
 Write-Delayed "Enabling System Restore..." -NewLine:$false
 
 # Set RestorePoint Creation Frequency to 0 (allow multiple restore points)
@@ -951,14 +959,14 @@ foreach ($task in $taskList) {
 }
 Write-TaskComplete
 Write-Log "Disabled unnecessary scheduled tasks"
-#endregion WindowsCustomization
+#endregion Profile Customization
 
  
 ############################################################################################################
 #                                          Office 365 Installation                                         #
 #                                                                                                          #
 ############################################################################################################
-#region M365 Installation
+#region M365 Install
 function Write-Delayed {
     param(
         [string]$Text, 
@@ -1376,8 +1384,6 @@ else {
 }
 
 
-# Function to check if the OS is Windows 10
-
 # Trigger MITS Debloat for Windows 10
 if (Is-Windows10) {
     try {
@@ -1490,12 +1496,13 @@ try {
     Write-Host "An error occurred: $_" -ForegroundColor Red
     Write-Log "Error creating system restore point: $_"
 }
-
+#endregion Baseline Cleanup
 
 ############################################################################################################
 #                                           Baseline Summary                                               #
 #                                                                                                          #
 ############################################################################################################
+#region Summary
 # Display Baseline Summary
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding
@@ -1520,4 +1527,4 @@ Write-Log "Automated workstation baseline has completed successfully"
 
 Read-Host -Prompt "Press enter to exit"
 Stop-Process -Id $PID -Force
-#endregion CleanupAndFinalize 
+#endregion Summary
