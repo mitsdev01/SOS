@@ -1099,7 +1099,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 #region Bloatware Cleanup
 
 
-# Check if the OS is Windows 11
+<# Check if the OS is Windows 11
 if (Is-Windows11) {
     try {
         $Win11DebloatURL = "https://axcientrestore.blob.core.windows.net/win11/MITS-Debloat.zip"
@@ -1144,8 +1144,7 @@ if (Is-Windows10) {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
     }
 }
-
-
+#>
 
 ############################################################################################################
 #                                        Cleanup and Finalization                                        #

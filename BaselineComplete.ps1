@@ -65,3 +65,115 @@ Write-Host "Detected Antivirus: " -NoNewline
 $antivirusProduct.displayName
 Write-Output " "
 Read-Host -Prompt "Press Enter to exit..."
+
+function Write-Delayed {
+    param(
+        [string]$Text, 
+        [switch]$NewLine = $true,
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
+    )
+    $currentColor = [Console]::ForegroundColor
+    [Console]::ForegroundColor = $Color
+    foreach ($Char in $Text.ToCharArray()) {
+        [Console]::Write("$Char")
+        Start-Sleep -Milliseconds 25
+    }
+    if ($NewLine) {
+        [Console]::WriteLine()
+    }
+    [Console]::ForegroundColor = $currentColor
+}
+
+function Write-Log {
+    param ([string]$Message)
+    Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
+}
+
+function Write-TaskComplete {
+    Start-Sleep -Seconds 1
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write(" done.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+}
+
+function Write-TaskFailed {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write(" failed.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+}
+
+function Move-ProcessWindowToTopRight {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$processName
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $processes = Get-Process | Where-Object { $_.ProcessName -eq $processName }
+    
+    foreach ($process in $processes) {
+        $hwnd = $process.MainWindowHandle
+        if ($hwnd -eq [IntPtr]::Zero) { continue }
+        
+        $x = $screen.Right - 800
+        $y = $screen.Top
+        
+        [void][Win32.User32]::SetWindowPos($hwnd, -1, $x, $y, 800, 600, 0x0040)
+    }
+}
+
+# Add the required Win32 API functions
+Add-Type -TypeDefinition @"
+    using System;
+    using System.Runtime.InteropServices;
+    
+    namespace Win32 {
+        public class User32 {
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        }
+    }
+"@
+
+function Show-SpinningWait {
+    param (
+        [Parameter(Mandatory = $true)]
+        [ScriptBlock]$ScriptBlock,
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [string]$DoneMessage = "done."
+    )
+    
+    Write-Delayed "$Message" -NewLine:$false
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    $jobName = [Guid]::NewGuid().ToString()
+    
+    # Start the script block as a job
+    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock
+    
+    # Display spinner while job is running
+    while ($job.State -eq 'Running') {
+        [Console]::Write($spinner[$spinnerIndex])
+        Start-Sleep -Milliseconds 100
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    }
+    
+    # Get the job result
+    $result = Receive-Job -Name $jobName
+    Remove-Job -Name $jobName
+    
+    # Replace spinner with done message
+    Start-Sleep -Seconds 1
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write($DoneMessage)
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
+    return $result
+}
