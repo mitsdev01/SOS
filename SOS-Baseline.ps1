@@ -577,22 +577,22 @@ if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
                         Remove-Item -Path $file -Force
                     }
                 } else {
-                    Write-Host "Installation validation failed! Service is not running or not found." -ForegroundColor Red
+                    #Write-Host "Installation validation failed! Service is not running or not found." -ForegroundColor Red
                     if ($null -ne $service) {
-                        Write-Host "Service exists but status is: $($service.Status)" -ForegroundColor Yellow
-                        Write-Host "Attempting to start service..." -ForegroundColor Yellow
+                        Write-Host "Datto RMM Service exists but status is: $($service.Status)" -ForegroundColor Yellow
+                        Write-Host "Attempting to start Datto RMM Service..." -ForegroundColor Yellow -NoNewline
                         Start-Service -Name $agentName -ErrorAction SilentlyContinue
                         Start-Sleep -Seconds 5
                         $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
                         if ($null -ne $service -and $service.Status -eq "Running") {
-                            Write-Host "Service started successfully!" -ForegroundColor Green
+                            Write-Host " done." -ForegroundColor Green
                             Write-Log "Datto RMM service started manually after installation"
                         } else {
-                            Write-Host "Failed to start service." -ForegroundColor Red
+                            Write-Host "Failed to start Datto RMM service." -ForegroundColor Red
                             Write-Log "Failed to start Datto RMM service after installation"
                         }
                     } else {
-                        Write-Host "Service does not exist." -ForegroundColor Red
+                        Write-Host "Datto RMM Service does not exist." -ForegroundColor Red
                         Write-Log "Datto RMM service does not exist after installation"
                     }
                 }
