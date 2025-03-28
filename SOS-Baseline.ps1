@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.3.3                                           #
+#                                                 Version 1.3.4                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.3.3
+    Version:        1.3.4
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.3.3"
+$ScriptVersion = "1.3.4"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -1303,16 +1303,16 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 #region Bloatware Cleanup
 
 
-# Check if the OS is Windows 11
+# Trigger SOS Debloat for Windows 11
 if (Is-Windows11) {
     try {
-        $Win11DebloatURL = "https://axcientrestore.blob.core.windows.net/win11/MITS-Debloat.zip"
-        $Win11DebloatFile = "c:\temp\MITS-Debloat.zip"
+        $Win11DebloatURL = "https://axcientrestore.blob.core.windows.net/win11/SOS-Debloat.zip"
+        $Win11DebloatFile = "c:\temp\SOS-Debloat.zip"
         Invoke-WebRequest -Uri $Win11DebloatURL -OutFile $Win11DebloatFile -UseBasicParsing -ErrorAction Stop 
         Start-Sleep -seconds 2
-        Expand-Archive $Win11DebloatFile -DestinationPath 'c:\temp\MITS-Debloat'
+        Expand-Archive $Win11DebloatFile -DestinationPath 'c:\temp\SOS-Debloat'
         Start-Sleep -Seconds 2
-        Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\MITS-Debloat\MITS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -DisableLockscreenTips -DisableSuggestions -ShowKnownFileExt -TaskbarAlignLeft -HideSearchTb -DisableWidgets -Silent'"
+        Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\SOS-Debloat\SOS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -DisableLockscreenTips -DisableSuggestions -ShowKnownFileExt -TaskbarAlignLeft -HideSearchTb -DisableWidgets -Silent'"
         Start-Sleep -Seconds 2
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
@@ -1327,16 +1327,16 @@ else {
 }
 
 
-# Trigger MITS Debloat for Windows 10
+# Trigger SOS Debloat for Windows 10
 if (Is-Windows10) {
     try {
-        $MITSDebloatURL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/MITS-Debloat.zip"
-        $MITSDebloatFile = "c:\temp\MITS-Debloat.zip"
-        Invoke-WebRequest -Uri $MITSDebloatURL -OutFile $MITSDebloatFile -UseBasicParsing -ErrorAction Stop 
+        $SOSDebloatURL = "https://axcientrestore.blob.core.windows.net/win11/SOS-Debloat.zip"
+        $SOSDebloatFile = "c:\temp\SOS-Debloat.zip"
+        Invoke-WebRequest -Uri $SOSDebloatURL -OutFile $SOSDebloatFile -UseBasicParsing -ErrorAction Stop 
         Start-Sleep -seconds 2
-        Expand-Archive $MITSDebloatFile -DestinationPath c:\temp\MITS-Debloat -Force
+        Expand-Archive $SOSDebloatFile -DestinationPath c:\temp\MITS-Debloat -Force
         Start-Sleep -Seconds 2
-        Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\MITS-Debloat\MITS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -ShowKnownFileExt -Silent'"
+        Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\SOS-Debloat\SOS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -ShowKnownFileExt -Silent'"
         Start-Sleep -Seconds 2
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
