@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.3.5                                           #
+#                                                 Version 1.3.7                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.3.5
+    Version:        1.3.7
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,12 +46,63 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.3.5"
+$ScriptVersion = "1.3.7"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
+# Store system type for use in termination handler
+$global:IsMobileDevice = $false
+
+# Set up termination handler for Ctrl+C and window closing
+$null = [Console]::TreatControlCAsInput = $true
+# Register termination handler
+$null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -Action {
+    Write-Host "`n`nScript termination detected. Performing cleanup..." -ForegroundColor Yellow
+    # Create WakeLock exit flag to stop the WakeLock script if it's running
+    if (-not (Test-Path "c:\temp\wakelock.flag")) {
+        try {
+            New-Item -Path "c:\temp\wakelock.flag" -ItemType File -Force | Out-Null
+            Write-Host "WakeLock flag created to stop background script." -ForegroundColor Cyan
+        }
+        catch {
+            Write-Host "Failed to create WakeLock flag: $_" -ForegroundColor Red
+        }
+    }
+    
+    # If mobile device, stop presentation settings
+    if ($global:IsMobileDevice) {
+        try {
+            $presentationProcess = Get-Process | Where-Object { $_.Path -eq "C:\Windows\System32\PresentationSettings.exe" } -ErrorAction SilentlyContinue
+            if ($presentationProcess) {
+                Stop-Process -InputObject $presentationProcess -Force -ErrorAction SilentlyContinue
+                Write-Host "Stopped presentation settings." -ForegroundColor Cyan
+            }
+        }
+        catch {
+            Write-Host "Failed to stop presentation settings: $_" -ForegroundColor Red
+        }
+    }
+    
+    # Re-enable Windows Update service if it was disabled
+    try {
+        $wuService = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
+        if ($wuService -and $wuService.StartType -eq 'Disabled') {
+            Set-Service -Name wuauserv -StartupType Manual -ErrorAction SilentlyContinue
+            Start-Service -Name wuauserv -ErrorAction SilentlyContinue
+            Write-Host "Re-enabled Windows Update service." -ForegroundColor Cyan
+        }
+    }
+    catch {
+        Write-Host "Failed to re-enable Windows Update service: $_" -ForegroundColor Red
+    }
+    
+    # Log termination
+    Add-Content -Path $LogFile -Value "$(Get-Date) - Script terminated by user." -ErrorAction SilentlyContinue
+    
+    Write-Host "Cleanup completed. Exiting script." -ForegroundColor Yellow
+}
 
 # Create required directories
 if (-not (Test-Path $TempFolder)) { New-Item -Path $TempFolder -ItemType Directory | Out-Null }
@@ -454,6 +505,8 @@ try {
     
     # Check if the system is a mobile device (PCSystemType 2 = Mobile)
     if ($pcSystemType -eq 2) {
+        # Set global flag for termination handler
+        $global:IsMobileDevice = $true
         # Mobile device detected, launching presentation settings
         Start-Process -FilePath "C:\Windows\System32\PresentationSettings.exe" -ArgumentList "/start"
     } else {
