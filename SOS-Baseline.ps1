@@ -1460,11 +1460,11 @@ try {
 ############################################################################################################
 #region Summary
 # Display Baseline Summary
+Write-Host ""
 $Padding = ("=" * [System.Console]::BufferWidth)
-
 # Visual formatting
 Write-Host -ForegroundColor "Green" $Padding
-Print-Middle "`nSOS Baseline Script Completed Successfully" "Green"
+Print-Middle "SOS Baseline Script Completed Successfully" "Green"
 Print-Middle "Reboot recommended to finalize changes" "Yellow"
 Write-Host -ForegroundColor "Green" $Padding
 
