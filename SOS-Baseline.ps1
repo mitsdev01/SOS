@@ -1334,7 +1334,7 @@ if (Is-Windows10) {
         $SOSDebloatFile = "c:\temp\SOS-Debloat.zip"
         Invoke-WebRequest -Uri $SOSDebloatURL -OutFile $SOSDebloatFile -UseBasicParsing -ErrorAction Stop 
         Start-Sleep -seconds 2
-        Expand-Archive $SOSDebloatFile -DestinationPath c:\temp\MITS-Debloat -Force
+        Expand-Archive $SOSDebloatFile -DestinationPath c:\temp\SOS-Debloat -Force
         Start-Sleep -Seconds 2
         Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\SOS-Debloat\SOS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -ShowKnownFileExt -Silent'"
         Start-Sleep -Seconds 2
