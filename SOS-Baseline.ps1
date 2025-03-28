@@ -843,7 +843,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
             # Verify volume key protector exists
             $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
             if ($BitLockerVolume.KeyProtector) {
-                Write-Host "Bitlocker disk encryption configured successfully."
+                #Write-Host "Bitlocker disk encryption configured successfully."
             } else {
                 Write-Host "Bitlocker disk encryption is not configured."
             }
