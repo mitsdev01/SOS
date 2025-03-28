@@ -1552,7 +1552,7 @@ try {
         
         # Validate name
         if ($newName -match '^[a-zA-Z0-9\-]{1,15}$') {
-            # Rename the computer
+            # Rename the machine
             Rename-Computer -NewName $newName -Force
             Write-Log "Computer renamed to: $newName (requires restart)"
             [System.Windows.Forms.MessageBox]::Show("Computer has been renamed to '$newName'. Changes will take effect after restart.", "Rename Successful", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
