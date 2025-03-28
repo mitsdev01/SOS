@@ -182,7 +182,10 @@ function Show-SpinningWait {
         [ScriptBlock]$ScriptBlock,
         [Parameter(Mandatory = $true)]
         [string]$Message,
-        [string]$DoneMessage = "done."
+        [string]$DoneMessage = "done.",
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [object[]]$ArgumentList,
+        [switch]$SuppressOutput = $false
     )
     
     # Visual delayed writing (will also be included in transcript)
@@ -192,7 +195,7 @@ function Show-SpinningWait {
     $jobName = [Guid]::NewGuid().ToString()
     
     # Start the script block as a job
-    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock
+    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
     
     # Display spinner while job is running
     while ($job.State -eq 'Running') {
@@ -206,7 +209,7 @@ function Show-SpinningWait {
     $jobOutput = Receive-Job -Name $jobName
     
     # Log job output to transcript if there is any
-    if ($jobOutput) {
+    if ($jobOutput -and -not $SuppressOutput) {
         Write-Host "`nJob output: $($jobOutput -join "`n")" -ForegroundColor Gray
     }
     
@@ -499,10 +502,12 @@ while ($true) {
 #region RMM Install
 
 # Agent Installation Configuration
-$file = "$TempFolder\AgentSetup_Standard+Office+Systems+MITS.exe"
+$TempFolder = "c:\temp"
+$file = "$TempFolder\AgentInstall.exe"
+$LogFile = "c:\temp\DRMM-Install.log"
 $agentName = "CagService"
 $agentPath = "C:\Program Files (x86)\CentraStage"
-$installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/b1f0bb64-e008-44e9-8260-2c5039cdd437"
+$installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/ce8a0a8d-84bd-4baa-850a-6f46e9c37dfc"
 
 # Check for existing Datto RMM agent
 $installStatus = Test-DattoInstallation
@@ -527,91 +532,107 @@ if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
         }
     }
 
-    # Download and install
-    Write-Host "Downloading Datto RMM Agent..." -NoNewline
-    try {
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($installerUri, $file)
-        Write-Host " done." -ForegroundColor Green
-    } catch {
-        Write-Host " failed!" -ForegroundColor Red
-        Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "Failed to download Datto RMM agent: $($_.Exception.Message)"
-    }
-
+    # Download and install using spinner animation
+    Show-SpinnerWithProgressBar -Message "Downloading Datto RMM Agent..." -URL $installerUri -OutFile $file -DoneMessage " done."
+    
     # Verify the file exists and has content
     if ((Test-Path $file) -and (Get-Item $file).Length -gt 0) {
-        Write-Host "Installing Datto RMM Agent..." -NoNewline
-        try {
-            # Run installer
-            $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-            $startInfo.FileName = $file
-            $startInfo.Arguments = "/S"
-            $startInfo.UseShellExecute = $true
-            $startInfo.Verb = "runas"  # Run as admin
+        # Install with spinner animation
+        $fileToInstall = $file  # Create a copy of the path
+        $installResult = Show-SpinningWait -Message "Installing Datto RMM Agent..." -DoneMessage " done." -ScriptBlock {
+            param ($InstallerPath)  # Accept the file path as a parameter
             
-            $process = [System.Diagnostics.Process]::Start($startInfo)
-            if ($null -eq $process) {
-                throw "Failed to start installation process"
+            try {
+                Write-Output "Using installer file: $InstallerPath"  # Debug output
+                
+                # Verify file exists before attempting to run
+                if (!(Test-Path $InstallerPath)) {
+                    return @{
+                        Success = $false
+                        Error = "Installer file not found at path: $InstallerPath"
+                    }
+                }
+                
+                # Run installer
+                $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+                $startInfo.FileName = $InstallerPath
+                $startInfo.Arguments = "/S"
+                $startInfo.UseShellExecute = $true
+                $startInfo.Verb = "runas"  # Run as admin
+                
+                $process = [System.Diagnostics.Process]::Start($startInfo)
+                if ($null -eq $process) {
+                    throw "Failed to start installation process"
+                }
+                
+                $process.WaitForExit()
+                $exitCode = $process.ExitCode
+                
+                return @{
+                    Success = $exitCode -eq 0
+                    ExitCode = $exitCode
+                }
+            } catch {
+                return @{
+                    Success = $false
+                    Error = $_.Exception.Message
+                }
             }
-            
-            $process.WaitForExit()
-            $exitCode = $process.ExitCode
-            
-            if ($exitCode -eq 0) {
-                Write-Host " done." -ForegroundColor Green
-                
-                # Wait for service initialization
-                Write-Host "Waiting for service initialization..." -NoNewline
+        } -ArgumentList $fileToInstall -SuppressOutput
+        
+        if ($installResult.Success) {
+            # Wait for service initialization
+            Show-SpinningWait -Message "Waiting for service initialization..." -DoneMessage " done." -ScriptBlock {
                 Start-Sleep -Seconds 15
-                Write-Host " done." -ForegroundColor Green
-                
-                # Check if the service exists and is running
-                $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
-                
-                if ($null -ne $service -and $service.Status -eq "Running") {
-                    Write-Host "Installation completed successfully! Service is running." -ForegroundColor Green
-                    Write-Log "Datto RMM agent installed successfully"
-                    # Clean up installer file
-                    if (Test-Path $file) {
-                        Remove-Item -Path $file -Force
-                    }
-                } else {
-                    #Write-Host "Installation validation failed! Service is not running or not found." -ForegroundColor Red
-                    if ($null -ne $service) {
-                        Write-Host "Datto RMM Service exists but status is: $($service.Status)" -ForegroundColor Yellow
-                        Write-Host "Attempting to start Datto RMM Service..." -ForegroundColor Yellow -NoNewline
-                        Start-Service -Name $agentName -ErrorAction SilentlyContinue
-                        Start-Sleep -Seconds 5
-                        $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
-                        if ($null -ne $service -and $service.Status -eq "Running") {
-                            Write-Host " done." -ForegroundColor Green
-                            Write-Log "Datto RMM service started manually after installation"
-                        } else {
-                            Write-Host "Failed to start Datto RMM service." -ForegroundColor Red
-                            Write-Log "Failed to start Datto RMM service after installation"
-                        }
-                    } else {
-                        Write-Host "Datto RMM Service does not exist." -ForegroundColor Red
-                        Write-Log "Datto RMM service does not exist after installation"
-                    }
+            } -SuppressOutput
+            
+            # Check if the service exists and is running
+            $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
+            
+            if ($null -ne $service -and $service.Status -eq "Running") {
+                #Write-Host "Installation completed successfully! Service is running." -ForegroundColor Green
+                Write-Log "Datto RMM agent installed successfully"
+                # Clean up installer file
+                if (Test-Path $file) {
+                    Remove-Item -Path $file -Force
                 }
             } else {
-                Write-Host " failed with exit code $exitCode." -ForegroundColor Red
-                Write-Log "Datto RMM installation failed with exit code $exitCode"
-                $fileInfo = Get-Item $file -ErrorAction SilentlyContinue
-                if ($null -ne $fileInfo) {
-                    Write-Host "File size: $($fileInfo.Length) bytes" -ForegroundColor Yellow
-                    if ($fileInfo.Length -lt 1000) {
-                        Write-Host "File appears to be too small to be a valid installer!" -ForegroundColor Red
-                        Write-Log "Datto RMM installer file is too small to be valid: $($fileInfo.Length) bytes"
+                if ($null -ne $service) {
+                    Write-Host "Datto RMM Service exists but status is: $($service.Status)" -ForegroundColor Yellow
+                    Show-SpinningWait -Message "Attempting to start Datto RMM Service..." -DoneMessage " done." -ScriptBlock {
+                        Start-Service -Name $agentName -ErrorAction SilentlyContinue
+                        Start-Sleep -Seconds 5
+                    } -SuppressOutput
+                    
+                    $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
+                    if ($null -ne $service -and $service.Status -eq "Running") {
+                        Write-Log "Datto RMM service started manually after installation"
+                    } else {
+                        Write-Host "Failed to start Datto RMM service." -ForegroundColor Red
+                        Write-Log "Failed to start Datto RMM service after installation"
                     }
+                } else {
+                    Write-Host "Datto RMM Service does not exist." -ForegroundColor Red
+                    Write-Log "Datto RMM service does not exist after installation"
                 }
             }
-        } catch {
-            Write-Host " installation failed!" -ForegroundColor Red
-            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Log "Error during Datto RMM installation: $($_.Exception.Message)"
+        } else {
+            Write-Host "Installation failed with exit code $($installResult.ExitCode)." -ForegroundColor Red
+            Write-Log "Datto RMM installation failed with exit code $($installResult.ExitCode)"
+            
+            if ($installResult.Error) {
+                Write-Host "Error: $($installResult.Error)" -ForegroundColor Red
+                Write-Log "Error during Datto RMM installation: $($installResult.Error)"
+            }
+            
+            $fileInfo = Get-Item $file -ErrorAction SilentlyContinue
+            if ($null -ne $fileInfo) {
+                Write-Host "File size: $($fileInfo.Length) bytes" -ForegroundColor Yellow
+                if ($fileInfo.Length -lt 1000) {
+                    Write-Host "File appears to be too small to be a valid installer!" -ForegroundColor Red
+                    Write-Log "Datto RMM installer file is too small to be valid: $($fileInfo.Length) bytes"
+                }
+            }
         }
     } else {
         Write-Host "Error: Downloaded file is missing or empty." -ForegroundColor Red
