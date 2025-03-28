@@ -1473,6 +1473,7 @@ try {
     Write-Host "An error occurred: $_" -ForegroundColor Red
     Write-Log "Error creating system restore point: $_"
 }
+
 #endregion Baseline Cleanup
 
 ############################################################################################################
