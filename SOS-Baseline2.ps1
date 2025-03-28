@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.2.8                                            #
+#                                                 Version 1.3.2                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.2.8
+    Version:        1.3.2
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,11 +46,11 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.2.8"
+$ScriptVersion = "1.3.2"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
-$LogFile = "$TempFolder\baseline.log"
+$LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
 
 # Create required directories
@@ -212,14 +212,15 @@ function Show-SpinningWait {
     
     Remove-Job -Name $jobName
     
-    # Ensure Done message is in transcript
-    Write-Host $DoneMessage -ForegroundColor Green
-    
-    # Display completion message (visual formatting)
+    # Write done message once (will be captured in transcript)
+    # and handle visual formatting
     [Console]::ForegroundColor = [System.ConsoleColor]::Green
     [Console]::Write($DoneMessage)
     [Console]::ResetColor()
     [Console]::WriteLine()
+    
+    # Log completion to the log file
+    Write-Log "Completed: $Message"
     
     return $jobOutput
 }
@@ -343,7 +344,7 @@ function Show-SpinnerAnimation {
 #endregion Functions
 
 # Start transcript logging
-Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
+#Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
 
 ############################################################################################################
 #                                             Title Screen                                                 #
@@ -834,10 +835,11 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
             } until ($percentageEncrypted -eq "0.0%")
             Write-Host "`nDecryption of $env:SystemDrive is complete."
             # Reconfigure BitLocker
-            Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$true
+            Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$false
             Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -WarningAction SilentlyContinue | Out-Null
             Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -WarningAction SilentlyContinue | Out-Null
             Start-Process 'manage-bde.exe' -ArgumentList " -on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait | Out-Null
+            Write-Host " done." -ForegroundColor Green
             # Verify volume key protector exists
             $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
             if ($BitLockerVolume.KeyProtector) {
@@ -1462,7 +1464,7 @@ $Padding = ("=" * [System.Console]::BufferWidth)
 
 # Visual formatting
 Write-Host -ForegroundColor "Green" $Padding
-Print-Middle "SOS Baseline Script Completed Successfully" "Green"
+Print-Middle "`nSOS Baseline Script Completed Successfully" "Green"
 Print-Middle "Reboot recommended to finalize changes" "Yellow"
 Write-Host -ForegroundColor "Green" $Padding
 
@@ -1478,7 +1480,7 @@ Write-Host " "
 #endregion Summary
 
 # Stopping transcript
-Stop-Transcript | Out-Null
+#Stop-Transcript | Out-Null
 
 # Update log file with completion
 Write-Log "Automated workstation baseline has completed successfully"
