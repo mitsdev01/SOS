@@ -185,10 +185,7 @@ function Show-SpinningWait {
         [string]$DoneMessage = "done."
     )
     
-    # Ensure message is written to transcript
-    Write-Host "$Message" -NoNewline
-    
-    # Visual delayed writing
+    # Visual delayed writing (will also be included in transcript)
     Write-Delayed "$Message" -NewLine:$false
     $spinner = @('/', '-', '\', '|')
     $spinnerIndex = 0
@@ -238,10 +235,7 @@ function Show-SpinnerWithProgressBar {
         [string]$DoneMessage = "done."
     )
     
-    # Ensure message is written to transcript
-    #Write-Host "$Message" -NoNewline
-    
-    # Visual delayed writing
+    # Visual delayed writing (will also be included in transcript)
     Write-Delayed "$Message" -NewLine:$false
     
     # Create parent directory for output file if it doesn't exist
@@ -292,14 +286,15 @@ function Show-SpinnerWithProgressBar {
         $powerShell.Dispose()
         $runspace.Dispose()
         
-        # Ensure Done message is in transcript
-        Write-Host $DoneMessage -ForegroundColor Green
-        
-        # Display completion message (visual formatting)
+        # Write done message once (will be captured in transcript)
+        # and handle visual formatting
         [Console]::ForegroundColor = [System.ConsoleColor]::Green
         [Console]::Write($DoneMessage)
         [Console]::ResetColor()
         [Console]::WriteLine()
+        
+        # Ensure it's in the transcript too
+        #Write-Verbose "Finished: $Message $DoneMessage" -Verbose
     }
 }
 
@@ -315,6 +310,7 @@ function Show-SpinnerAnimation {
     $originalCursorVisible = [Console]::CursorVisible
     [Console]::CursorVisible = $false
     
+    # Visual delayed writing (will also be included in transcript)
     Write-Delayed $Message -NewLine:$false
     
     $job = Start-Job -ScriptBlock $ScriptBlock
@@ -1148,7 +1144,7 @@ if ($O365) {
         $OfficeURL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/OfficeSetup.exe"
         
         # Use spinner with progress bar for download
-        Show-SpinnerWithProgressBar -Message "Downloading Microsoft Office 365..." -URL $OfficeURL -OutFile $OfficePath #-DoneMessage " done."
+        Show-SpinnerWithProgressBar -Message "Downloading Microsoft Office 365..." -URL $OfficeURL -OutFile $OfficePath -DoneMessage " done."
     }
     
     # Validate successful download by checking the file size
@@ -1163,7 +1159,7 @@ if ($O365) {
         Show-SpinningWait -Message "Installing Microsoft Office 365..." -ScriptBlock {
             Start-Process -FilePath "c:\temp\OfficeSetup.exe" -Wait
             Start-Sleep -Seconds 15
-        } #-DoneMessage " done."
+        } -DoneMessage " done."
         
         if (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "Microsoft 365 Apps for enterprise - en-us"}) {
             Write-Log "Office 365 Installation Completed Successfully."
