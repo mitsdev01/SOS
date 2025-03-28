@@ -1523,7 +1523,7 @@ try {
 #region Rename Machine
 
 # Rename machine functionality with GUI prompt
-Write-Delayed "Prompting for new machine rename...`r" -NewLine:$false
+Write-Delayed "Prompting for new machine rename..." -NewLine:$false
 try {
     # Load required assemblies for GUI
     Add-Type -AssemblyName System.Windows.Forms
@@ -1607,7 +1607,7 @@ try {
         if ($newName -match '^[a-zA-Z0-9\-]{1,15}$') {
             # Rename the machine
             Rename-Computer -NewName $newName -Force
-            Write-Log "Computer renamed to: $newName (requires restart)"
+            Write-Log "Machine renamed to: $newName (requires restart)"
             [System.Windows.Forms.MessageBox]::Show("Computer has been renamed to '$newName'. Changes will take effect after restart.", "Rename Successful", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
             Write-TaskComplete
         } else {
@@ -1616,7 +1616,7 @@ try {
             Write-Host " skipped - invalid name." -ForegroundColor Yellow
         }
     } else {
-        Write-Log "Computer rename skipped by user"
+        Write-Log "Machine rename skipped by user"
         Write-Host " skipped." -ForegroundColor Yellow
     }
 } catch {
