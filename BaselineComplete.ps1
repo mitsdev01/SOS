@@ -29,6 +29,25 @@ try {
 }
 
 Import-Module -Name CommonStuff
+
+function Write-Delayed {
+    param(
+        [string]$Text, 
+        [switch]$NewLine = $true,
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
+    )
+    $currentColor = [Console]::ForegroundColor
+    [Console]::ForegroundColor = $Color
+    foreach ($Char in $Text.ToCharArray()) {
+        [Console]::Write("$Char")
+        Start-Sleep -Milliseconds 25
+    }
+    if ($NewLine) {
+        [Console]::WriteLine()
+    }
+    [Console]::ForegroundColor = $currentColor
+}
+
 Write-Host "Installed Software Report:"
 $Software = Get-InstalledSoftware | select DisplayName, DisplayVersion
 $Software | ft -HideTableHeaders

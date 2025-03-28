@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                   Version 1.2.3                                        #
+#                                                 Version 1.2.8                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.2.3
+    Version:        1.2.8
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.2.3"
+$ScriptVersion = "1.2.8"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -59,9 +59,6 @@ if (-not (Test-Path $LogFile)) { New-Item -Path $LogFile -ItemType File | Out-Nu
 
 # Set working directory
 Set-Location -Path $TempFolder
-
-# Start transcript logging
-Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
 
 # Add the required Win32 API functions
 Add-Type -TypeDefinition @"
@@ -111,20 +108,22 @@ function Write-Delayed {
 function Write-Log {
     param ([string]$Message)
     Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
+    # Also write to transcript for better logging
+    #Write-Verbose "LOG: $Message" -Verbose
 }
 
 function Write-TaskComplete {
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
+    # Write to transcript
+    Write-Host " done." -ForegroundColor Green
+    
+    # Original visual formatting has been removed to prevent duplicate output
 }
 
 function Write-TaskFailed {
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" failed.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
+    # Write to transcript
+    Write-Host " failed." -ForegroundColor Red
+    
+    # Original visual formatting has been removed to prevent duplicate output
 }
 
 function Move-ProcessWindowToTopRight {
@@ -186,6 +185,10 @@ function Show-SpinningWait {
         [string]$DoneMessage = "done."
     )
     
+    # Ensure message is written to transcript
+    Write-Host "$Message" -NoNewline
+    
+    # Visual delayed writing
     Write-Delayed "$Message" -NewLine:$false
     $spinner = @('/', '-', '\', '|')
     $spinnerIndex = 0
@@ -202,17 +205,26 @@ function Show-SpinningWait {
         $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
     }
     
-    # Get the job result
-    $result = Receive-Job -Name $jobName
+    # Get the job result - Get job output first for transcript
+    $jobOutput = Receive-Job -Name $jobName
+    
+    # Log job output to transcript if there is any
+    if ($jobOutput) {
+        Write-Host "`nJob output: $($jobOutput -join "`n")" -ForegroundColor Gray
+    }
+    
     Remove-Job -Name $jobName
     
-    # Replace spinner with done message
+    # Ensure Done message is in transcript
+    Write-Host $DoneMessage -ForegroundColor Green
+    
+    # Display completion message (visual formatting)
     [Console]::ForegroundColor = [System.ConsoleColor]::Green
     [Console]::Write($DoneMessage)
     [Console]::ResetColor()
     [Console]::WriteLine()
     
-    return $result
+    return $jobOutput
 }
 
 function Show-SpinnerWithProgressBar {
@@ -226,86 +238,64 @@ function Show-SpinnerWithProgressBar {
         [string]$DoneMessage = "done."
     )
     
+    # Ensure message is written to transcript
+    #Write-Host "$Message" -NoNewline
+    
+    # Visual delayed writing
     Write-Delayed "$Message" -NewLine:$false
     
-    # Create a folder for storing communication files between jobs
-    $tempFolder = "$env:TEMP\spinner_comm"
-    if (-not (Test-Path $tempFolder)) {
-        New-Item -Path $tempFolder -ItemType Directory -Force | Out-Null
+    # Create parent directory for output file if it doesn't exist
+    $outDir = Split-Path -Parent $OutFile
+    if (-not (Test-Path $outDir)) {
+        New-Item -Path $outDir -ItemType Directory -Force | Out-Null
     }
-    $spinnerFile = "$tempFolder\spinner_pos.txt"
-    $completeFile = "$tempFolder\spinner_complete.txt"
     
-    # Store initial cursor position
-    $cursorTop = [Console]::CursorTop
-    $cursorLeft = [Console]::CursorLeft
-    Set-Content -Path $spinnerFile -Value "$cursorTop,$cursorLeft" -Force
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    $done = $false
     
-    # Start a background job to show spinner
-    $spinnerJob = Start-Job -ScriptBlock {
-        param($spinnerFile, $completeFile)
-        
-        $spinner = @('/', '-', '\', '|')
-        $spinnerIndex = 0
-        $running = $true
-        
-        while ($running) {
-            # Get the position where to write the spinner
-            if (Test-Path $spinnerFile) {
-                $posContent = Get-Content $spinnerFile
-                if ($posContent -match "(\d+),(\d+)") {
-                    $cursorTop = [int]$Matches[1]
-                    $cursorLeft = [int]$Matches[2]
-                    
-                    # Save current position
-                    $currentTop = [Console]::CursorTop
-                    $currentLeft = [Console]::CursorLeft
-                    
-                    # Move to spinner position and write it
-                    [Console]::SetCursorPosition($cursorLeft, $cursorTop)
-                    [Console]::Write($spinner[$spinnerIndex])
-                    
-                    # Restore previous position
-                    [Console]::SetCursorPosition($currentLeft, $currentTop)
-                    
-                    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-                }
-            }
-            
-            # Check if we should stop
-            if (Test-Path $completeFile) {
-                $running = $false
-                break
-            }
-            
-            Start-Sleep -Milliseconds 100
-        }
-    } -ArgumentList $spinnerFile, $completeFile
+    # Start download in a separate runspace
+    $runspace = [runspacefactory]::CreateRunspace()
+    $runspace.Open()
+    $powerShell = [powershell]::Create()
+    $powerShell.Runspace = $runspace
     
+    # Add script to download file
+    [void]$powerShell.AddScript({
+        param($URL, $OutFile)
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($URL, $OutFile)
+    }).AddArgument($URL).AddArgument($OutFile)
+    
+    # Start the download asynchronously
+    $handle = $powerShell.BeginInvoke()
+    
+    # Display spinner while downloading
     try {
-        # Download the file with progress bar showing
-        $ProgressPreference = 'Continue'
-        Invoke-WebRequest -Uri $URL -OutFile $OutFile -UseBasicParsing
+        while (-not $handle.IsCompleted) {
+            # Write the current spinner character
+            [Console]::Write($spinner[$spinnerIndex])
+            Start-Sleep -Milliseconds 100
+            [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+            $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        }
+        
+        # Complete the async operation
+        $powerShell.EndInvoke($handle) | Out-String | Write-Debug
+    }
+    catch {
+        # Ensure errors are written to transcript
+        Write-Host "`nError during download: $_" -ForegroundColor Red
     }
     finally {
-        # Signal spinner to stop
-        Set-Content -Path $completeFile -Value "done" -Force
+        # Clean up resources
+        $powerShell.Dispose()
+        $runspace.Dispose()
         
-        # Give spinner a moment to see the signal
-        Start-Sleep -Milliseconds 200
+        # Ensure Done message is in transcript
+        Write-Host $DoneMessage -ForegroundColor Green
         
-        # Clean up the job
-        Stop-Job -Job $spinnerJob
-        Remove-Job -Job $spinnerJob
-        
-        # Clean up temp files
-        if (Test-Path $spinnerFile) { Remove-Item -Path $spinnerFile -Force }
-        if (Test-Path $completeFile) { Remove-Item -Path $completeFile -Force }
-        
-        # Move cursor to original position
-        [Console]::SetCursorPosition($cursorLeft, $cursorTop)
-        
-        # Replace spinner with done message
+        # Display completion message (visual formatting)
         [Console]::ForegroundColor = [System.ConsoleColor]::Green
         [Console]::Write($DoneMessage)
         [Console]::ResetColor()
@@ -313,7 +303,51 @@ function Show-SpinnerWithProgressBar {
     }
 }
 
+function Show-SpinnerAnimation {
+    param (
+        [ScriptBlock]$ScriptBlock,
+        [string]$Message,
+        [System.ConsoleColor]$SuccessColor = [System.ConsoleColor]::Green
+    )
+    
+    $spinChars = '/', '-', '\', '|'
+    $pos = 0
+    $originalCursorVisible = [Console]::CursorVisible
+    [Console]::CursorVisible = $false
+    
+    Write-Delayed $Message -NewLine:$false
+    
+    $job = Start-Job -ScriptBlock $ScriptBlock
+    
+    try {
+        while ($job.State -eq 'Running') {
+            [Console]::Write($spinChars[$pos])
+            Start-Sleep -Milliseconds 100
+            [Console]::Write("`b")
+            $pos = ($pos + 1) % 4
+        }
+        
+        # Get the job result
+        $result = Receive-Job -Job $job
+        
+        # Display completion status
+        [Console]::ForegroundColor = $SuccessColor
+        [Console]::Write(" done.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        return $result
+    }
+    finally {
+        Remove-Job -Job $job -Force
+        [Console]::CursorVisible = $originalCursorVisible
+    }
+}
+
 #endregion Functions
+
+# Start transcript logging
+Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
 
 ############################################################################################################
 #                                             Title Screen                                                 #
@@ -324,7 +358,7 @@ function Show-SpinnerWithProgressBar {
 # Print Scritp Title
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding -NoNewline
-Print-Middle "SOS - New Workstation Baseline Script"
+Print-Middle "SOS - Workstation Baseline Script"
 Write-Host -ForegroundColor Yellow "                                                   version $ScriptVersion"
 Write-Host -ForegroundColor "Green" -NoNewline $Padding
 Write-Host "  "
@@ -336,6 +370,17 @@ Start-Sleep -Seconds 2
 #                                                                                                          #
 ############################################################################################################
 # Start baseline
+[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
+[Console]::Write("`n")
+Write-Delayed "Starting workstation baseline..." -NewLine:$false
+[Console]::Write("`n")
+[Console]::ResetColor() 
+[Console]::WriteLine()
+Start-Sleep -Seconds 2
+
+# Start baseline log file
+Write-Log "Automated workstation baseline has started"
+
 # Check for required modules
 Write-Host "Checking for required modules..." -NoNewline
 $spinner = @('/', '-', '\', '|')
@@ -343,9 +388,8 @@ $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
 $originalCursorTop = [Console]::CursorTop
 
-# Create a more robust spinning implementation
+#  Run the module check in the background and show spinner
 try {
-    # Run the module check in the background and show spinner
     $job = Start-Job -ScriptBlock {
         Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1")
     }
@@ -373,6 +417,8 @@ try {
     [Console]::ResetColor()
     [Console]::WriteLine()
     
+    # Ensure completion is written to transcript
+    #Write-Host "Module check completed successfully" -ForegroundColor Green
     Write-Log "Module check completed successfully"
 }
 catch {
@@ -392,20 +438,14 @@ catch {
     [Console]::Write("failed.")
     [Console]::ResetColor()
     [Console]::WriteLine()
+    
+    # Ensure error is written to transcript
+    Write-Host "Module check failed: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
     Write-Log "Module check failed: $($_.Exception.Message)"
 }
 
-[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-[Console]::Write("`n")
-Write-Delayed "Starting workstation baseline..." -NewLine:$false
-[Console]::Write("`n")
-[Console]::ResetColor() 
-[Console]::WriteLine()
-Start-Sleep -Seconds 2
 
-# Start baseline log file
-Write-Log "Automated workstation baseline has started"
 
 #region WakeLock
 try {
@@ -605,8 +645,8 @@ if ($user) {
     }
 } else {
     Write-Host "Creating local sosadmin & setting password to 'Never Expire'..." -NoNewline
-    $Password = ConvertTo-SecureString "setpasswordhere" -AsPlainText -Force
-    New-LocalUser "sosadmin" -Password $Password -FullName "MITS Admin" -Description "SOSADMIN Account" *> $null
+    $Password = ConvertTo-SecureString "ChangeMe!" -AsPlainText -Force
+    New-LocalUser "sosadmin" -Password $Password -FullName "SOSS Admin" -Description "SOSADMIN Account" *> $null
     $newUser = Get-LocalUser -Name 'sosadmin' -ErrorAction SilentlyContinue
     if ($newUser) {
         $newUser | Set-LocalUser -PasswordNeverExpires $true
@@ -692,11 +732,11 @@ Write-TaskComplete
 Write-Log "Lid close action set to 'Do Nothing' (applicable to laptops)"
 
 # Configure standby settings
-Write-Delayed "Setting Standby Idle time to never on battery..." -NewLine:$false
+Write-Delayed "Setting Standby idle time to never on battery..." -NewLine:$false
 powercfg -setdcvalueindex SCHEME_CURRENT SUB_SLEEP STANDBYIDLE 0
 Write-TaskComplete
 
-Write-Delayed "Setting Standby Idle time to never on AC power..." -NewLine:$false
+Write-Delayed "Setting Standby idle time to never on AC power..." -NewLine:$false
 powercfg -setacvalueindex SCHEME_CURRENT SUB_SLEEP STANDBYIDLE 0
 Write-TaskComplete
 
@@ -741,6 +781,10 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
     }
     if ($BitLockerStatus.ProtectionStatus -eq 'On') {
         # Bitlocker is already configured
+        # Write to transcript
+        Write-Host "Bitlocker is already configured on $env:SystemDrive - " -ForegroundColor Red -NoNewline
+        
+        # For visual appearance
         [Console]::ForegroundColor = [System.ConsoleColor]::Red
         Write-Delayed "Bitlocker is already configured on $env:SystemDrive - " -NewLine:$false
         [Console]::ResetColor()
@@ -750,6 +794,10 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         $endTime = (Get-Date).AddSeconds($timeoutSeconds)
         $userResponse = $null
 
+        # Write prompt to transcript
+        Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
+        
+        # For visual appearance
         [Console]::ForegroundColor = [System.ConsoleColor]::Red
         Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
         [Console]::ResetColor()
@@ -759,9 +807,16 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
                 $key = [Console]::ReadKey($true)
                 if ($key.KeyChar -match '^[ynYN]$') {
                     $userResponse = $key.KeyChar
+                    # Log response for transcript
+                    Write-Host "`nUser selected: $userResponse"
                     break
                 }
             } elseif ((Get-Date) -ge $endTime) {
+                # Log timeout for transcript
+                Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
+                Write-Host " done." -ForegroundColor Green
+                
+                # For visual appearance
                 Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
                 Write-Host -ForegroundColor Green " done."
                 $userResponse = 'y' # Assume 'yes' to skip if no response
@@ -900,7 +955,7 @@ if (Test-Path $Advertising) {
 Write-Delayed "Preventing Cortana from being used in Windows Search..." -NewLine:$false
 $Search = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search"
 if (!(Test-Path $Search)) {
-    New-Item $Search | Out-Null
+    New-Item $Search -Force | Out-Null
 }
 if (Test-Path $Search) {
     Set-ItemProperty $Search AllowCortana -Value 0
@@ -912,55 +967,23 @@ if (Test-Path $Search) {
 Write-Delayed "Disabling Bing Search in Start Menu..." -NewLine:$false
 $WebSearch = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search"
 if (!(Test-Path $WebSearch)) {
-    New-Item $WebSearch | Out-Null
+    New-Item $WebSearch -Force | Out-Null
 }
-Set-ItemProperty $WebSearch DisableWebSearch -Value 1 
-
-# Apply to all user profiles
-foreach ($sid in $UserSIDs) {
-    $WebSearch = "Registry::HKU\$sid\SOFTWARE\Microsoft\Windows\CurrentVersion\Search"
-    if (!(Test-Path $WebSearch)) {
-        New-Item $WebSearch -Force | Out-Null
-    }
-    Set-ItemProperty $WebSearch BingSearchEnabled -Value 0 -ErrorAction SilentlyContinue
-}
+Set-ItemProperty $WebSearch DisableWebSearch -Value 1
 Set-ItemProperty "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" BingSearchEnabled -Value 0 -ErrorAction SilentlyContinue
 Write-TaskComplete
 Write-Log "Bing Search disabled in Start Menu"
-
-# Stop Windows Feedback Experience program
-Write-Delayed "Stopping the Windows Feedback Experience program..." -NewLine:$false
-$Period = "HKCU:\Software\Microsoft\Siuf\Rules"
-if (!(Test-Path $Period)) { 
-    New-Item $Period -Force | Out-Null
-}
-Set-ItemProperty $Period PeriodInNanoSeconds -Value 0 
-
-# Apply to all user profiles
-foreach ($sid in $UserSIDs) {
-    $Period = "Registry::HKU\$sid\Software\Microsoft\Siuf\Rules"
-    if (!(Test-Path $Period)) { 
-        New-Item $Period -Force | Out-Null
-    }
-    Set-ItemProperty $Period PeriodInNanoSeconds -Value 0 -ErrorAction SilentlyContinue
-}
-Write-TaskComplete
-Write-Log "Windows Feedback Experience program stopped"
 
 # Disable Mixed Reality Portal
 Write-Delayed "Disabling Mixed Reality Portal..." -NewLine:$false
 $Holo = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic"    
 if (Test-Path $Holo) {
-    Set-ItemProperty $Holo FirstRunSucceeded -Value 0 
+    Set-ItemProperty $Holo FirstRunSucceeded -Value 0 -ErrorAction SilentlyContinue
 }
-
-# Apply to all user profiles
-foreach ($sid in $UserSIDs) {
-    $Holo = "Registry::HKU\$sid\Software\Microsoft\Windows\CurrentVersion\Holographic"    
-    if (Test-Path $Holo) {
-        Set-ItemProperty $Holo FirstRunSucceeded -Value 0 -ErrorAction SilentlyContinue
-    }
+if (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic")) {
+    New-Item "HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic" -Force | Out-Null
 }
+Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic" FirstRunSucceeded -Value 0 -ErrorAction SilentlyContinue
 Write-TaskComplete
 Write-Log "Mixed Reality Portal disabled"
 
@@ -980,9 +1003,10 @@ if (!(Test-Path $WifiSense2)) {
 }
 Set-ItemProperty $WifiSense2 Value -Value 0 
 
-if (Test-Path $WifiSense3) {
-    Set-ItemProperty $WifiSense3 AutoConnectAllowedOEM -Value 0 
+if (!(Test-Path $WifiSense3)) {
+    New-Item $WifiSense3 -Force | Out-Null
 }
+Set-ItemProperty $WifiSense3 AutoConnectAllowedOEM -Value 0 
 Write-TaskComplete
 Write-Log "Wi-Fi Sense disabled"
 
@@ -991,15 +1015,8 @@ Write-Delayed "Disabling live tiles..." -NewLine:$false
 $Live = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications"    
 if (!(Test-Path $Live)) {      
     New-Item $Live -Force | Out-Null
-}
-Set-ItemProperty $Live NoTileApplicationNotification -Value 1 
-
-# Apply to all user profiles
-foreach ($sid in $UserSIDs) {
-    $Live = "Registry::HKU\$sid\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications"    
-    if (!(Test-Path $Live)) {      
-        New-Item $Live -Force | Out-Null
-    }
+}  
+if (Test-Path $Live) {
     Set-ItemProperty $Live NoTileApplicationNotification -Value 1 -ErrorAction SilentlyContinue
 }
 Write-TaskComplete
@@ -1009,15 +1026,7 @@ Write-Log "Live tiles disabled"
 Write-Delayed "Disabling People icon on Taskbar..." -NewLine:$false
 $People = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People'
 if (Test-Path $People) {
-    Set-ItemProperty $People -Name PeopleBand -Value 0  
-}
-
-# Apply to all user profiles
-foreach ($sid in $UserSIDs) {
-    $People = "Registry::HKU\$sid\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People"
-    if (Test-Path $People) {
-        Set-ItemProperty $People -Name PeopleBand -Value 0 -ErrorAction SilentlyContinue
-    }
+    Set-ItemProperty $People PeopleBand -Value 0 -ErrorAction SilentlyContinue
 }
 Write-TaskComplete
 Write-Log "People icon disabled on Taskbar"
@@ -1117,73 +1126,11 @@ Write-TaskComplete
 Write-Log "Disabled unnecessary scheduled tasks"
 #endregion Profile Customization
 
- 
 ############################################################################################################
 #                                          Office 365 Installation                                         #
 #                                                                                                          #
 ############################################################################################################
 #region M365 Install
-function Write-Delayed {
-    param(
-        [string]$Text, 
-        [switch]$NewLine = $true,
-        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
-    )
-    $currentColor = [Console]::ForegroundColor
-    [Console]::ForegroundColor = $Color
-    foreach ($Char in $Text.ToCharArray()) {
-        [Console]::Write("$Char")
-        Start-Sleep -Milliseconds 25
-    }
-    if ($NewLine) {
-        [Console]::WriteLine()
-    }
-    [Console]::ForegroundColor = $currentColor
-}
-
-function Write-Log {
-    param ([string]$Message)
-    Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
-}
-
-
-function Show-SpinningWait {
-    param (
-        [Parameter(Mandatory = $true)]
-        [ScriptBlock]$ScriptBlock,
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [string]$DoneMessage = "done."
-    )
-    
-    Write-Delayed "$Message" -NewLine:$false
-    $spinner = @('/', '-', '\', '|')
-    $spinnerIndex = 0
-    $jobName = [Guid]::NewGuid().ToString()
-    
-    # Start the script block as a job
-    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock
-    
-    # Display spinner while job is running
-    while ($job.State -eq 'Running') {
-        [Console]::Write($spinner[$spinnerIndex])
-        Start-Sleep -Milliseconds 100
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-    }
-    
-    # Get the job result
-    $result = Receive-Job -Name $jobName
-    Remove-Job -Name $jobName
-    
-    # Replace spinner with done message
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write($DoneMessage)
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    
-    return $result
-}
 
 # Install Office 365
 $O365 = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
@@ -1199,24 +1146,24 @@ if ($O365) {
     $OfficePath = "c:\temp\OfficeSetup.exe"
     if (-not (Test-Path $OfficePath)) {
         $OfficeURL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/OfficeSetup.exe"
-        Show-SpinningWait -ScriptBlock {
-            $ProgressPreference = 'SilentlyContinue'  # Hide progress bar for faster downloads
-            Invoke-WebRequest -OutFile $using:OfficePath -Uri $using:OfficeURL -UseBasicParsing
-        } -Message "Downloading Microsoft Office 365..." -DoneMessage " done."
+        
+        # Use spinner with progress bar for download
+        Show-SpinnerWithProgressBar -Message "Downloading Microsoft Office 365..." -URL $OfficeURL -OutFile $OfficePath #-DoneMessage " done."
     }
     
     # Validate successful download by checking the file size
-    $ProgressPreference = 'Continue'  # reset display of downloads
     $FileSize = (Get-Item $OfficePath).Length
     $ExpectedSize = 7733536 # in bytes
     if ($FileSize -eq $ExpectedSize) {
-        Show-SpinningWait -ScriptBlock {
-            taskkill /f /im OfficeClickToRun.exe *> $null
-            taskkill /f /im OfficeC2RClient.exe *> $null
-            Start-Sleep -Seconds 10
-            Start-Process -FilePath $using:OfficePath -ArgumentList "/silent", "/forceclose" -Wait
+        # Kill any running Office processes
+        taskkill /f /im OfficeClickToRun.exe *> $null
+        taskkill /f /im OfficeC2RClient.exe *> $null
+        Start-Sleep -Seconds 10
+        
+        Show-SpinningWait -Message "Installing Microsoft Office 365..." -ScriptBlock {
+            Start-Process -FilePath "c:\temp\OfficeSetup.exe" -Wait
             Start-Sleep -Seconds 15
-        } -Message "Installing Microsoft Office 365..." -DoneMessage " done."
+        } #-DoneMessage " done."
         
         if (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "Microsoft 365 Apps for enterprise - en-us"}) {
             Write-Log "Office 365 Installation Completed Successfully."
@@ -1227,7 +1174,7 @@ if ($O365) {
         } else {
             Write-Log "Office 365 installation failed."
             [Console]::ForegroundColor = [System.ConsoleColor]::Red
-            [Console]::Write("Microsoft Office 365 installation failed.")
+            [Console]::Write("`nMicrosoft Office 365 installation failed.")
             [Console]::ResetColor()
             [Console]::WriteLine()  
         }   
@@ -1242,143 +1189,16 @@ if ($O365) {
         Start-Sleep -Seconds 10
         Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
     }
-}
+} 
+#endregion M365 Install
+
 
 ############################################################################################################
 #                                        Adobe Acrobat Installation                                        #
 #                                                                                                          #
 ############################################################################################################
+#region Acrobat Install
 
-function Write-Delayed {
-    param(
-        [string]$Text, 
-        [switch]$NewLine = $true,
-        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
-    )
-    $currentColor = [Console]::ForegroundColor
-    [Console]::ForegroundColor = $Color
-    foreach ($Char in $Text.ToCharArray()) {
-        [Console]::Write("$Char")
-        Start-Sleep -Milliseconds 25
-    }
-    if ($NewLine) {
-        [Console]::WriteLine()
-    }
-    [Console]::ForegroundColor = $currentColor
-}
-
-function Write-Log {
-    param ([string]$Message)
-    Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
-}
-
-function Show-SpinningWait {
-    param (
-        [Parameter(Mandatory = $true)]
-        [ScriptBlock]$ScriptBlock,
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [string]$DoneMessage = "done."
-    )
-    
-    Write-Delayed "$Message" -NewLine:$false
-    $spinner = @('/', '-', '\', '|')
-    $spinnerIndex = 0
-    $jobName = [Guid]::NewGuid().ToString()
-    
-    # Start the script block as a job
-    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock
-    
-    # Display spinner while job is running
-    while ($job.State -eq 'Running') {
-        [Console]::Write($spinner[$spinnerIndex])
-        Start-Sleep -Milliseconds 100
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-    }
-    
-    # Get the job result
-    $result = Receive-Job -Name $jobName
-    Remove-Job -Name $jobName
-    
-    # Replace spinner with done message
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write($DoneMessage)
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    
-    return $result
-}
-
-function Show-SpinnerWithProgressBar {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [Parameter(Mandatory = $true)]
-        [string]$URL,
-        [Parameter(Mandatory = $true)]
-        [string]$OutFile,
-        [string]$DoneMessage = "done."
-    )
-    
-    Write-Delayed "$Message" -NewLine:$false
-    
-    # Create parent directory for output file if it doesn't exist
-    $outDir = Split-Path -Parent $OutFile
-    if (-not (Test-Path $outDir)) {
-        New-Item -Path $outDir -ItemType Directory -Force | Out-Null
-    }
-    
-    $spinner = @('/', '-', '\', '|')
-    $spinnerIndex = 0
-    $done = $false
-    
-    # Start download in a separate runspace
-    $runspace = [runspacefactory]::CreateRunspace()
-    $runspace.Open()
-    $powerShell = [powershell]::Create()
-    $powerShell.Runspace = $runspace
-    
-    # Add script to download file
-    [void]$powerShell.AddScript({
-        param($URL, $OutFile)
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($URL, $OutFile)
-    }).AddArgument($URL).AddArgument($OutFile)
-    
-    # Start the download asynchronously
-    $handle = $powerShell.BeginInvoke()
-    
-    # Display spinner while downloading
-    try {
-        while (-not $handle.IsCompleted) {
-            # Write the current spinner character
-            [Console]::Write($spinner[$spinnerIndex])
-            Start-Sleep -Milliseconds 100
-            [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-            $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        }
-        
-        # Complete the async operation
-        $powerShell.EndInvoke($handle)
-    }
-    catch {
-        Write-Host "`nError during download: $_" -ForegroundColor Red
-    }
-    finally {
-        # Clean up resources
-        $powerShell.Dispose()
-        $runspace.Dispose()
-        
-        # Display completion message
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write($DoneMessage)
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-    }
-}
-
-#region Acrobat Installation
 # Initialize log file if not already defined
 if (-not (Get-Variable -Name LogFile -ErrorAction SilentlyContinue)) {
     $LogFile = "$env:TEMP\AcrobatInstallation.log"
@@ -1395,13 +1215,12 @@ $acrobatInstalled = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Window
                      Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
 
 if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
-    Write-Host "Adobe Acrobat Reader is already installed. Skipping installation." -ForegroundColor Green
+    #Write-Host "Adobe Acrobat Reader is already installed. Skipping installation." -ForegroundColor Green
     Write-Log "Adobe Acrobat Reader already installed, skipped installation."
 } else {
     # Create temp directory if it doesn't exist
     if (-not (Test-Path "C:\temp")) {
         New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
-        Write-Host "Created C:\temp directory"
     } 
 
     try {
@@ -1450,7 +1269,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
                                  Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
             
             if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
-                Write-Host "Adobe Acrobat Reader installation completed successfully" -ForegroundColor Green
+                #Write-Host "Adobe Acrobat Reader installation completed successfully" -ForegroundColor Green
                 Write-Log "Adobe Acrobat Reader installed successfully"
             } else {
                 if (-not (Test-Path $acrobatPath)) {
@@ -1473,7 +1292,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
         # Cleanup
         if (Test-Path $AcroFilePath) {
             Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue
-            Write-Host "Cleaned up installer file"
+            #Write-Host "Cleaned up installer file"
         }
     }
 }
@@ -1545,11 +1364,17 @@ Start-Service -Name wuauserv
 Start-Sleep -Seconds 5
 $service = Get-Service -Name wuauserv
 if ($service.Status -eq 'Running') {
+    # Write to transcript
+    # Write-Host " done." -ForegroundColor Green
+    # Visual formatting
     [Console]::ForegroundColor = [System.ConsoleColor]::Green
     [Console]::Write(" done.")
     [Console]::ResetColor()
     [Console]::WriteLine() 
 } else {
+    # Write to transcript
+    Write-Host " failed." -ForegroundColor Red
+    # Visual formatting
     [Console]::ForegroundColor = [System.ConsoleColor]::Red
     [Console]::Write(" failed.")
     [Console]::ResetColor()
@@ -1587,6 +1412,10 @@ if (Test-Path "c:\temp\update_windows.ps1") {
     [System.Windows.Forms.SendKeys]::SendWait('%{TAB}')
     Move-ProcessWindowToTopRight -processName "Windows PowerShell" | Out-Null
     Start-Sleep -Seconds 1
+    
+    # Write to transcript
+    #Write-Host " done." -ForegroundColor Green
+    # Visual formatting
     [Console]::ForegroundColor = [System.ConsoleColor]::Green
     [Console]::Write(" done.")
     [Console]::ResetColor()
@@ -1594,10 +1423,13 @@ if (Test-Path "c:\temp\update_windows.ps1") {
     Write-Log "All available Windows updates are installed."
      
 } else {
+    # Write to transcript
+    Write-Host "Windows Update execution failed!" -ForegroundColor Red
+    # Visual formatting
     [Console]::ForegroundColor = [System.ConsoleColor]::Red
     Write-Delayed "Windows Update execution failed!" -NewLine:$false
-        [Console]::ResetColor()
-        [Console]::WriteLine()  
+    [Console]::ResetColor()
+    [Console]::WriteLine()  
 }
 
 # Create WakeLock exit flag to stop the WakeLock script
@@ -1631,11 +1463,14 @@ try {
 #region Summary
 # Display Baseline Summary
 $Padding = ("=" * [System.Console]::BufferWidth)
+
+# Visual formatting
 Write-Host -ForegroundColor "Green" $Padding
 Print-Middle "SOS Baseline Script Completed Successfully" "Green"
 Print-Middle "Reboot recommended to finalize changes" "Yellow"
 Write-Host -ForegroundColor "Green" $Padding
 
+# Visual formatting
 Write-Host -ForegroundColor "Cyan" "Logs are available at:"
 Write-Host "  * $LogFile"
 Write-Host "  * $TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
