@@ -1463,6 +1463,114 @@ try {
     Write-Log "Error creating WakeLock exit flag: $_"
 }
 
+############################################################################################################
+#                                            Rename Machine                                                #
+#                                                                                                          #
+############################################################################################################
+#region Rename Machine
+
+# Rename machine functionality with GUI prompt
+Write-Delayed "Prompting for new machine rename...`r" -NewLine:$false
+try {
+    # Load required assemblies for GUI
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    # Create form
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Rename Machine"
+    $form.Size = New-Object System.Drawing.Size(400, 200)
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+
+    # Create label
+    $label = New-Object System.Windows.Forms.Label
+    $label.Location = New-Object System.Drawing.Point(10, 20)
+    $label.Size = New-Object System.Drawing.Size(380, 20)
+    $label.Text = "Enter new machine name (15 characters max, no spaces):"
+    $form.Controls.Add($label)
+
+    # Create textbox
+    $textBox = New-Object System.Windows.Forms.TextBox
+    $textBox.Location = New-Object System.Drawing.Point(10, 50)
+    $textBox.Size = New-Object System.Drawing.Size(360, 20)
+    $textBox.MaxLength = 15
+    $textBox.Text = $env:COMPUTERNAME
+    $form.Controls.Add($textBox)
+
+    # Create status label
+    $statusLabel = New-Object System.Windows.Forms.Label
+    $statusLabel.Location = New-Object System.Drawing.Point(10, 80)
+    $statusLabel.Size = New-Object System.Drawing.Size(380, 20)
+    $statusLabel.ForeColor = [System.Drawing.Color]::Red
+    $form.Controls.Add($statusLabel)
+
+    # Create OK button
+    $okButton = New-Object System.Windows.Forms.Button
+    $okButton.Location = New-Object System.Drawing.Point(75, 120)
+    $okButton.Size = New-Object System.Drawing.Size(100, 30)
+    $okButton.Text = "Rename"
+    $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $form.Controls.Add($okButton)
+    $form.AcceptButton = $okButton
+
+    # Create Cancel button
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Location = New-Object System.Drawing.Point(225, 120)
+    $cancelButton.Size = New-Object System.Drawing.Size(100, 30)
+    $cancelButton.Text = "Skip"
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $form.Controls.Add($cancelButton)
+    $form.CancelButton = $cancelButton
+
+    # Validate name when text changes
+    $textBox.Add_TextChanged({
+        $newName = $textBox.Text
+        if ($newName -match '\s') {
+            $statusLabel.Text = "Machine name cannot contain spaces"
+            $okButton.Enabled = $false
+        } elseif ($newName.Length -eq 0) {
+            $statusLabel.Text = "Machine name cannot be empty"
+            $okButton.Enabled = $false
+        } elseif ($newName -notmatch '^[a-zA-Z0-9\-]+$') {
+            $statusLabel.Text = "Only letters, numbers, and hyphens are allowed"
+            $okButton.Enabled = $false
+        } else {
+            $statusLabel.Text = ""
+            $okButton.Enabled = $true
+        }
+    })
+
+    # Show the form
+    $result = $form.ShowDialog()
+
+    # If OK was clicked and the name is different
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $textBox.Text -ne $env:COMPUTERNAME) {
+        $newName = $textBox.Text
+        
+        # Validate name
+        if ($newName -match '^[a-zA-Z0-9\-]{1,15}$') {
+            # Rename the computer
+            Rename-Computer -NewName $newName -Force
+            Write-Log "Computer renamed to: $newName (requires restart)"
+            [System.Windows.Forms.MessageBox]::Show("Computer has been renamed to '$newName'. Changes will take effect after restart.", "Rename Successful", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            Write-TaskComplete
+        } else {
+            Write-Log "Invalid Machine name entered: $newName"
+            [System.Windows.Forms.MessageBox]::Show("Invalid Machine name. Rename skipped.", "Rename Failed", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+            Write-Host " skipped - invalid name." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Log "Computer rename skipped by user"
+        Write-Host " skipped." -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host " failed: $_" -ForegroundColor Red
+    Write-Log "Error in computer rename process: $_"
+}
+
 # Create a restore point
 Write-Delayed "Creating a system restore point..." -NewLine:$false
 try {
