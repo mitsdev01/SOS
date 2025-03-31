@@ -130,7 +130,7 @@ Clear-Host
 
 ############################################################################################################
 #                                                 Functions                                                #
-#                                                                                                          #
+#                                                                                                           #
 ############################################################################################################
 #region Functions
 function Print-Middle($Message, $Color = "White") {
@@ -1509,7 +1509,6 @@ if (Is-Windows10) {
 #                                                                                                          #
 ############################################################################################################
 #region DomainJoin
-
 # Domain Join Process
 Write-Delayed "Checking if domain join is required..." -NewLine:$true
 
@@ -1614,6 +1613,7 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
 }
 
 #endregion DomainJoin
+
 
 ############################################################################################################
 #                                        Cleanup and Finalization                                        #
