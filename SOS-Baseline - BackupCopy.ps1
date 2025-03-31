@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.4.2                                            #
+#                                                 Version 1.4.0                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.4.2
+    Version:        1.4.0
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.4.2"
+$ScriptVersion = "1.4.0"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -130,7 +130,7 @@ Clear-Host
 
 ############################################################################################################
 #                                                 Functions                                                #
-#                                                                                                           #
+#                                                                                                          #
 ############################################################################################################
 #region Functions
 function Print-Middle($Message, $Color = "White") {
@@ -1503,15 +1503,6 @@ if (Is-Windows10) {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
     }
 }
-
-############################################################################################################
-#                                               Domain Join                                                #
-#                                                                                                          #
-############################################################################################################
-#region DomainJoin
-
-# Join Domain
-irm https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/JoinComputertoad.ps1 | iex
 
 
 ############################################################################################################
