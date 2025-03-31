@@ -1451,6 +1451,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 ############################################################################################################
 #region Bloatware Cleanup
 
+Write-Delayed "Cleaning up bloatware..." -NewLine:$false
 
 # Trigger SOS Debloat for Windows 11
 if (Is-Windows11) {
@@ -1490,6 +1491,7 @@ if (Is-Windows10) {
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
         Write-Log "Windows 10 Debloat completed successfully."
+        Write-TaskComplete
     }
     catch {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
@@ -1713,9 +1715,12 @@ try {
 # Define temp files to clean up
 $TempFiles = @(
     "c:\temp\SOS-Debloat.zip",
+    "c:\temp\SOS-Debloat",
     "c:\temp\update_windows.ps1",
     "c:\temp\BaselineComplete.ps1",
-    "c:\temp\DRMM-Install.log"
+    "c:\temp\DRMM-Install.log",
+    "C:\temp\AcroRdrDC2500120432_en_US.exe",
+    "c:\temp\$env:COMPUTERNAME-baseline.txt"
 )
 
 Write-Delayed "Cleaning up temporary files..." -NewLine:$false
