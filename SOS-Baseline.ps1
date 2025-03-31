@@ -924,32 +924,104 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         }
     } else {
         # Bitlocker is not configured
-        Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$true
+        Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$false
+        
+        # Initialize spinner
+        $spinner = @('/', '-', '\', '|')
+        $spinnerIndex = 0
+        
         # Create the recovery key
         Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -WarningAction SilentlyContinue | Out-Null
+        
+        # Start showing spinner
+        [Console]::Write($spinner[$spinnerIndex])
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        
         # Add TPM key
         Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -WarningAction SilentlyContinue | Out-Null
-        Start-Sleep -Seconds 15 # Wait for the protectors to take effect
+        
+        # Update spinner
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::Write($spinner[$spinnerIndex])
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        
+        # Wait for the protectors to take effect
+        Start-Sleep -Seconds 5
+        
+        # Update spinner
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::Write($spinner[$spinnerIndex])
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        
         # Enable Encryption
-        Start-Process 'manage-bde.exe' -ArgumentList "-on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait | Out-Null
+        $encryptionProcess = Start-Process 'manage-bde.exe' -ArgumentList "-on $env:SystemDrive -UsedSpaceOnly" -Verb runas -PassThru -Wait
+        
+        # Update spinner during encryption wait
+        for ($i = 0; $i -lt 10; $i++) {
+            [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+            [Console]::Write($spinner[$spinnerIndex])
+            $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+            Start-Sleep -Milliseconds 500
+        }
+        
         # Backup the Recovery to AD
-        $RecoveryKeyGUID = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | Where-Object {$_.KeyProtectortype -eq 'RecoveryPassword'} | Select-Object -ExpandProperty KeyProtectorID
-        manage-bde.exe -protectors $env:SystemDrive -adbackup -id $RecoveryKeyGUID | Out-Null
+        $RecoveryKeyGUID = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | 
+                            Where-Object {$_.KeyProtectortype -eq 'RecoveryPassword'} | 
+                            Select-Object -ExpandProperty KeyProtectorID
+        
+        # Update spinner
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::Write($spinner[$spinnerIndex])
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        
+        # Try AD backup (may fail in non-domain environments)
+        try {
+            manage-bde.exe -protectors $env:SystemDrive -adbackup -id $RecoveryKeyGUID | Out-Null
+        }
+        catch {
+            Write-Log "Failed to backup BitLocker recovery key to AD: $_"
+        }
+        
         # Write Recovery Key to a file
         manage-bde -protectors C: -get | Out-File "$outputDirectory\$env:computername-BitLocker.txt"
+        
         # Verify volume key protector exists
         $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
+        
+        # Replace spinner with done message
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::ForegroundColor = [System.ConsoleColor]::Green
+        [Console]::Write(" done.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
         if ($BitLockerVolume.KeyProtector) {
-            Write-Delayed "Bitlocker disk encryption configured successfully." -NewLine:$true
+            # Get recovery information
+            $recoveryId = $BitLockerVolume.KeyProtector | 
+                Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | 
+                ForEach-Object { $_.KeyProtectorId.Trim('{', '}') }
+            
+            $recoveryPassword = $BitLockerVolume.KeyProtector | 
+                Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | 
+                Select-Object -ExpandProperty RecoveryPassword
+            
+            # Display recovery info
+            Write-Delayed "Bitlocker has been successfully configured." -NewLine:$true
             Write-Delayed "Recovery ID:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $($BitLockerVolume.KeyProtector | Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | ForEach-Object { $_.KeyProtectorId.Trim('{', '}') })"
+            Write-Host -ForegroundColor Cyan " $recoveryId"
             Write-Delayed "Recovery Password:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $($BitLockerVolume.KeyProtector | Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | Select-Object -ExpandProperty RecoveryPassword)"
+            Write-Host -ForegroundColor Cyan " $recoveryPassword"
+            
+            # Log success
+            Write-Log "BitLocker encryption configured successfully with Recovery ID: $recoveryId"
         } else {
             [Console]::ForegroundColor = [System.ConsoleColor]::Red
             [Console]::Write("Bitlocker disk encryption is not configured.")
             [Console]::ResetColor()
-            [Console]::WriteLine()  
+            [Console]::WriteLine()
+            
+            # Log failure
+            Write-Log "Failed to configure BitLocker encryption"
         }
     }
 } else {
