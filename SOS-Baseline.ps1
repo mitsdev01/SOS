@@ -1882,7 +1882,7 @@ try {
     Write-Log "Error in computer rename process: $_"
 }
 
-# Create a restore point
+<# Create a restore point
 Write-Delayed "Creating a system restore point..." -NewLine:$false
 
 # Initialize spinner
@@ -1929,6 +1929,20 @@ try {
     [Console]::ResetColor()
     [Console]::WriteLine()
     
+    Write-Host "An error occurred: $_" -ForegroundColor Red
+    Write-Log "Error creating system restore point: $_"
+}
+#>
+
+
+
+# Create a restore point
+Write-Delayed "Creating a system restore point..." -NewLine:$false
+try {
+    Checkpoint-Computer -Description "SOS Baseline Completed" -RestorePointType "APPLICATION_INSTALL" -ErrorAction Stop
+    Write-TaskComplete
+    Write-Log "System restore point created successfully`r"
+} catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
     Write-Log "Error creating system restore point: $_"
 }
