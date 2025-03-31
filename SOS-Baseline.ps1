@@ -786,7 +786,7 @@ try {
 }
 
 # Add a short delay for visual effect
-Start-Sleep -Milliseconds 500
+Start-Sleep -Milliseconds 100
 
 # Check both operations succeeded
 $service = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
