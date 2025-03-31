@@ -137,7 +137,6 @@ function Print-Middle($Message, $Color = "White") {
     Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
     Write-Host -ForegroundColor $Color $Message
 }
-
 function Write-Delayed {
     param(
         [string]$Text, 
@@ -160,22 +159,16 @@ function Write-Delayed {
 function Write-Log {
     param ([string]$Message)
     Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
-    # Also write to transcript for better logging
-    #Write-Verbose "LOG: $Message" -Verbose
 }
 
 function Write-TaskComplete {
     # Write to transcript
     Write-Host " done." -ForegroundColor Green
-    
-    # Original visual formatting has been removed to prevent duplicate output
 }
 
 function Write-TaskFailed {
     # Write to transcript
-    Write-Host " failed." -ForegroundColor Red
-    
-    # Original visual formatting has been removed to prevent duplicate output
+    Write-Host " failed." -ForegroundColor Red    
 }
 
 function Move-ProcessWindowToTopRight {
@@ -399,7 +392,7 @@ function Show-SpinnerAnimation {
 #endregion Functions
 
 # Start transcript logging
-#Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
+Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
 
 ############################################################################################################
 #                                             Title Screen                                                 #
@@ -422,15 +415,8 @@ Start-Sleep -Seconds 2
 #                                                                                                          #
 ############################################################################################################
 # Start baseline
-#[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-#[Console]::Write("`n")
-#Write-Delayed "Starting workstation baseline..." -NewLine:$false
-#[Console]::Write("`n")
-#[Console]::ResetColor() 
-#[Console]::WriteLine()
-#Start-Sleep -Seconds 2
 
-# Start baseline log file
+# Baseline log file
 Write-Log "Automated workstation baseline has started"
 
 # Check for required modules
@@ -905,11 +891,6 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         # Write to transcript
         Write-Host "Bitlocker is already configured on $env:SystemDrive - " -ForegroundColor Red -NoNewline
         
-        # For visual appearance
-        #[Console]::ForegroundColor = [System.ConsoleColor]::Red
-        #Write-Delayed "Bitlocker is already configured on $env:SystemDrive - " -NewLine:$false
-       # [Console]::ResetColor()
-
         # Setup for non-blocking read with timeout
         $timeoutSeconds = 10
         $endTime = (Get-Date).AddSeconds($timeoutSeconds)
@@ -919,9 +900,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         #Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
         
         # For visual appearance
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
-        [Console]::ResetColor()
+        Write-Host -ForegroundColor Red "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
 
         while ($true) {
             if ([Console]::KeyAvailable) {
@@ -1065,10 +1044,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
             # Log success
             Write-Log "BitLocker encryption configured successfully with Recovery ID: $recoveryId"
         } else {
-            [Console]::ForegroundColor = [System.ConsoleColor]::Red
-            [Console]::Write("Bitlocker disk encryption is not configured.")
-            [Console]::ResetColor()
-            [Console]::WriteLine()
+            Write-Host -ForegroundColor Red "Bitlocker disk encryption is not configured."
             
             # Log failure
             Write-Log "Failed to configure BitLocker encryption"
@@ -1358,10 +1334,8 @@ $O365 = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVer
 Where-Object { $_.DisplayName -like "*Microsoft 365 Apps for enterprise - en-us*" }
 
 if ($O365) {
-    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
-    [Console]::Write("Existing Microsoft Office installation found.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()   
+    Write-Host -ForegroundColor Cyan "Existing Microsoft Office installation found."
+    Write-Log "Existing Microsoft Office installation found."
 } else {
     $OfficePath = "c:\temp\OfficeSetup.exe"
     if (-not (Test-Path $OfficePath)) {
@@ -1392,20 +1366,14 @@ if ($O365) {
             taskkill /f /im OfficeC2RClient.exe *> $null
             Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
         } else {
+            Write-Host -ForegroundColor Red "Microsoft Office 365 installation failed."
             Write-Log "Office 365 installation failed."
-            [Console]::ForegroundColor = [System.ConsoleColor]::Red
-            [Console]::Write("`nMicrosoft Office 365 installation failed.")
-            [Console]::ResetColor()
-            [Console]::WriteLine()  
         }   
     }
     else {
         # Report download error
         Write-Log "Office download failed!"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        [Console]::Write("Download failed or file size does not match.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
+        Write-Host -ForegroundColor Red "Download failed or file size does not match."
         Start-Sleep -Seconds 10
         Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
     }
@@ -1581,26 +1549,20 @@ if (Is-Windows10) {
 #Write-Delayed "`nChecking if domain join is required..." -NewLine:$true
 
 # Create a console-based input prompt while maintaining visual style
-[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-Write-Delayed "Do you want to join this computer to a domain? (Y/N): " -NewLine:$false
-[Console]::ResetColor()
+Write-Host -ForegroundColor Yellow "Do you want to join this computer to a domain? (Y/N): " -NoNewline
 $joinDomain = Read-Host
 
 # Check if the user wants to join the domain
 if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
     # Prompt for domain information
-    [Console]::WriteLine()
-    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    Write-Host -ForegroundColor Cyan "Enter the domain name"
     $domainName = Read-Host "Enter the domain name"
-    [Console]::ResetColor()
-    
-    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+   
+    Write-Host -ForegroundColor Cyan "Enter the domain admin username"
     $adminUser = Read-Host "Enter the domain admin username"
-    [Console]::ResetColor()
     
-    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    Write-Host -ForegroundColor Cyan "Enter the password"
     $securePassword = Read-Host "Enter the password" -AsSecureString
-    [Console]::ResetColor()
     
     # Create a PSCredential object
     $credential = New-Object System.Management.Automation.PSCredential ($adminUser, $securePassword)
@@ -1698,18 +1660,14 @@ if ($service.Status -eq 'Running') {
     # Write to transcript
     # Write-Host " done." -ForegroundColor Green
     # Visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
-    [Console]::WriteLine() 
+    Write-Host -ForegroundColor Green " done."
+    Write-Log "Windows Update Service enabled and started successfully."
 } else {
     # Write to transcript
     Write-Host " failed." -ForegroundColor Red
     # Visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" failed.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()    
+    Write-Host -ForegroundColor Red " failed."
+    Write-Log "Windows Update Service failed to enable and start."
 }
 
 # Installing Windows Updates
@@ -1747,10 +1705,7 @@ if (Test-Path "c:\temp\update_windows.ps1") {
     # Write to transcript
     #Write-Host " done." -ForegroundColor Green
     # Visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
+    Write-Host -ForegroundColor Green " done."
     Write-Log "All available Windows updates are installed."
      
 } else {
@@ -2023,7 +1978,7 @@ Write-Host " "
 #endregion Summary
 
 # Stopping transcript
-#Stop-Transcript | Out-Null
+Stop-Transcript | Out-Null
 
 # Update log file with completion
 Write-Log "Automated workstation baseline has completed successfully"
