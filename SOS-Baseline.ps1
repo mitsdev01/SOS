@@ -742,10 +742,25 @@ if ($user) {
 #region Windows Update
 Write-Delayed "Suspending Windows Update..." -NewLine:$false
 
+# Initialize spinner
+$spinner = @('/', '-', '\', '|')
+$spinnerIndex = 0
+[Console]::Write($spinner[$spinnerIndex])
+
 # Stop the service first
 try {
+    # Update spinner
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
+    
     Stop-Service -Name wuauserv -Force -ErrorAction Stop
     $stopSuccess = $true
+    
+    # Update spinner
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
 } catch {
     $stopSuccess = $false
     Write-Log "Error stopping Windows Update service: $_"
@@ -753,20 +768,45 @@ try {
 
 # Then set startup type to disabled
 try {
+    # Update spinner
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
+    
     Set-Service -Name wuauserv -StartupType Disabled -ErrorAction Stop
     $disableSuccess = $true
+    
+    # Update spinner
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
 } catch {
     $disableSuccess = $false
     Write-Log "Error disabling Windows Update service: $_"
 }
 
+# Add a short delay for visual effect
+Start-Sleep -Milliseconds 500
+
 # Check both operations succeeded
 $service = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
 if ($stopSuccess -and $disableSuccess -and $service.Status -eq 'Stopped') {
-    Write-TaskComplete
+    # Replace spinner with done message
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write(" done.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
     Write-Log "Windows Update service suspended successfully"
 } else {
-    Write-TaskFailed
+    # Replace spinner with failed message
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write(" failed.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
     Write-Log "Failed to suspend Windows Update service completely"
 }
 #endregion WindowsUpdate
@@ -1607,7 +1647,6 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
 } else {
     # User chose to skip domain join
     Write-Host "Domain join process skipped." -ForegroundColor Yellow
-    Write-Host 
     Write-Log "Domain join process skipped by user"
 }
 
