@@ -432,11 +432,8 @@ function Start-CleanTranscript {
         
         # Start new transcript
         Start-Transcript -Path $Path -Force -ErrorAction Stop | Out-Null
-        Write-Output "======================================================================================"
-        Write-Output "                          SOS - Workstation Baseline Script                           "
-        Write-Output "                                 version $ScriptVersion                                "
-        Write-Output "======================================================================================"
-        Write-Output ""
+        
+        # Don't write the header here anymore, it will be displayed in the Title Screen section
         return $true
     }
     catch {
@@ -454,7 +451,7 @@ Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.t
 ############################################################################################################
 #region Title Screen
 
-# Print Scritp Title
+# Print Script Title - This will be displayed and captured in the transcript
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding -NoNewline
 Print-Middle "SOS - Workstation Baseline Script"
@@ -781,7 +778,14 @@ if ($user) {
 #                                                                                                          #
 ############################################################################################################
 #region Windows Update
-Write-Delayed "Suspending Windows Update..." -NewLine:$false
+# Skip writing to transcript/output directly, just use console methods
+# This prevents duplicate "Suspending Windows Update..." messages
+[Console]::ForegroundColor = [System.ConsoleColor]::White
+[Console]::Write("Suspending Windows Update...")
+[Console]::ResetColor()
+
+# Add to log file
+Write-Log "Suspending Windows Update service"
 
 # Initialize spinner
 $spinner = @('/', '-', '\', '|')
