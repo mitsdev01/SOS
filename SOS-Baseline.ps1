@@ -896,7 +896,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
                 $userResponse = 'y' # Assume 'yes' to skip if no response
                 break
             }
-            Start-Sleep -Milliseconds 500
+            Start-Sleep -Milliseconds 100
         }
 
         if ($userResponse -ine 'y') {
