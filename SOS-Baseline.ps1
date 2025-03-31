@@ -961,7 +961,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
             [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
             [Console]::Write($spinner[$spinnerIndex])
             $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-            Start-Sleep -Milliseconds 500
+            Start-Sleep -Milliseconds 100
         }
         
         # Backup the Recovery to AD
