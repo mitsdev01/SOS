@@ -741,27 +741,33 @@ if ($user) {
 ############################################################################################################
 #region Windows Update
 Write-Delayed "Suspending Windows Update..." -NewLine:$false
+
+# Stop the service first
 try {
-    # Stop the Windows Update service
-    Stop-Service -Name wuauserv -Force -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
-    
-    # Set the startup type of the Windows Update service to disabled
-    Set-Service -Name wuauserv -StartupType Disabled -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
-    
-    # Get the current status of the Windows Update service
-    $service = Get-Service -Name wuauserv
-    
-    # Check if the service is stopped
-    if ($service.Status -eq 'Stopped') {
-        Write-TaskComplete
-        Write-Log "Windows Update service suspended"
-    } else {
-        Write-TaskFailed
-        Write-Log "Failed to suspend Windows Update service"
-    }
+    Stop-Service -Name wuauserv -Force -ErrorAction Stop
+    $stopSuccess = $true
 } catch {
-    Write-Host "An error occurred: $_" -ForegroundColor Red
-    Write-Log "Error suspending Windows Update: $_"
+    $stopSuccess = $false
+    Write-Log "Error stopping Windows Update service: $_"
+}
+
+# Then set startup type to disabled
+try {
+    Set-Service -Name wuauserv -StartupType Disabled -ErrorAction Stop
+    $disableSuccess = $true
+} catch {
+    $disableSuccess = $false
+    Write-Log "Error disabling Windows Update service: $_"
+}
+
+# Check both operations succeeded
+$service = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
+if ($stopSuccess -and $disableSuccess -and $service.Status -eq 'Stopped') {
+    Write-TaskComplete
+    Write-Log "Windows Update service suspended successfully"
+} else {
+    Write-TaskFailed
+    Write-Log "Failed to suspend Windows Update service completely"
 }
 #endregion WindowsUpdate
 
