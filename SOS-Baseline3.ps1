@@ -443,7 +443,7 @@ function Start-CleanTranscript {
 }
 
 # Call the function after the necessary variables are set
-Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
+Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
 
 ############################################################################################################
 #                                             Title Screen                                                 #
@@ -971,8 +971,8 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
                 }
             } elseif ((Get-Date) -ge $endTime) {
                 # Log timeout for transcript
-                Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
-                Write-Host " done." -ForegroundColor Green
+                #Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
+                #Write-Host " done." -ForegroundColor Green
                 
                 # For visual appearance
                 Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
