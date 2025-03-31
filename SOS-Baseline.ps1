@@ -421,13 +421,13 @@ Start-Sleep -Seconds 2
 #                                                                                                          #
 ############################################################################################################
 # Start baseline
-[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-[Console]::Write("`n")
-Write-Delayed "Starting workstation baseline..." -NewLine:$false
-[Console]::Write("`n")
-[Console]::ResetColor() 
-[Console]::WriteLine()
-Start-Sleep -Seconds 2
+#[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
+#[Console]::Write("`n")
+#Write-Delayed "Starting workstation baseline..." -NewLine:$false
+#[Console]::Write("`n")
+#[Console]::ResetColor() 
+#[Console]::WriteLine()
+#Start-Sleep -Seconds 2
 
 # Start baseline log file
 Write-Log "Automated workstation baseline has started"
