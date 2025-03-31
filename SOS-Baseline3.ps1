@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.5.2                                            #
+#                                                 Version 1.5.3                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.5.2
+    Version:        1.5.3
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.5.2"
+$ScriptVersion = "1.5.3"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -147,10 +147,8 @@ function Write-Delayed {
     # Add to log file directly (not affected by transcript)
     Write-Log "UI: $Text"
     
-    # Write to the transcript using PowerShell's standard output
-    # This won't be affected by the character-by-character display
-    $Host.UI.RawUI.FlushInputBuffer()
-    Write-Output $Text
+    # Skip writing to transcript - the console output will be captured anyway
+    # This prevents duplicate output in transcript
     
     # For visual display, we'll use Console methods to show typing animation
     $originalColor = [Console]::ForegroundColor
@@ -180,13 +178,25 @@ function Write-Log {
 }
 
 function Write-TaskComplete {
-    # Write to transcript
-    Write-Host " done." -ForegroundColor Green
+    # Only log to file - avoid writing to transcript
+    Write-Log "Task completed successfully"
+    
+    # Visual formatting only - this will be captured in transcript
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write(" done.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
 }
 
 function Write-TaskFailed {
-    # Write to transcript
-    Write-Host " failed." -ForegroundColor Red    
+    # Only log to file - avoid writing to transcript
+    Write-Log "Task failed"
+    
+    # Visual formatting only - this will be captured in transcript
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write(" failed.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
 }
 
 function Move-ProcessWindowToTopRight {
