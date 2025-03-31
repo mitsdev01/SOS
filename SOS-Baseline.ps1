@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.4.5                                            #
+#                                                 Version 1.4.6                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.4.5
+    Version:        1.4.6
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.4.5"
+$ScriptVersion = "1.4.6"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -1607,6 +1607,7 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
 } else {
     # User chose to skip domain join
     Write-Host "Domain join process skipped." -ForegroundColor Yellow
+    Write-Host 
     Write-Log "Domain join process skipped by user"
 }
 
@@ -1618,7 +1619,7 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
 #                                                                                                          #
 ############################################################################################################
 #region Baseline Cleanup
-Start-Sleep -seconds 60
+#Start-Sleep -seconds 60
 # Enable and start Windows Update Service
 Write-Delayed "Enabling Windows Update Service..." -NewLine:$false
 Set-Service -Name wuauserv -StartupType Manual
