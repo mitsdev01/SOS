@@ -1935,7 +1935,6 @@ try {
 #>
 
 
-
 # Create a restore point
 Write-Delayed "Creating a system restore point..." -NewLine:$false
 try {
