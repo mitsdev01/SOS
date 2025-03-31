@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.4.6                                            #
+#                                                 Version 1.5.0                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.4.6
+    Version:        1.5.0
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.4.6"
+$ScriptVersion = "1.5.0"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -742,10 +742,25 @@ if ($user) {
 #region Windows Update
 Write-Delayed "Suspending Windows Update..." -NewLine:$false
 
+# Initialize spinner
+$spinner = @('/', '-', '\', '|')
+$spinnerIndex = 0
+[Console]::Write($spinner[$spinnerIndex])
+
 # Stop the service first
 try {
+    # Update spinner
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
+    
     Stop-Service -Name wuauserv -Force -ErrorAction Stop
     $stopSuccess = $true
+    
+    # Update spinner
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
 } catch {
     $stopSuccess = $false
     Write-Log "Error stopping Windows Update service: $_"
@@ -753,20 +768,45 @@ try {
 
 # Then set startup type to disabled
 try {
+    # Update spinner
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
+    
     Set-Service -Name wuauserv -StartupType Disabled -ErrorAction Stop
     $disableSuccess = $true
+    
+    # Update spinner
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
 } catch {
     $disableSuccess = $false
     Write-Log "Error disabling Windows Update service: $_"
 }
 
+# Add a short delay for visual effect
+Start-Sleep -Milliseconds 100
+
 # Check both operations succeeded
 $service = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
 if ($stopSuccess -and $disableSuccess -and $service.Status -eq 'Stopped') {
-    Write-TaskComplete
+    # Replace spinner with done message
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write(" done.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
     Write-Log "Windows Update service suspended successfully"
 } else {
-    Write-TaskFailed
+    # Replace spinner with failed message
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write(" failed.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
     Write-Log "Failed to suspend Windows Update service completely"
 }
 #endregion WindowsUpdate
@@ -888,7 +928,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
                 if ($key.KeyChar -match '^[ynYN]$') {
                     $userResponse = $key.KeyChar
                     # Log response for transcript
-                    Write-Host "`nUser selected: $userResponse"
+                    Write-Host "`nUser selected: $userResponse to skip Bitlocker configuration."
                     break
                 }
             } elseif ((Get-Date) -ge $endTime) {
@@ -1260,6 +1300,12 @@ Write-Log "Microsoft Feeds removed"
 
 # Disable Scheduled Tasks
 Write-Delayed "Disabling scheduled tasks..." -NewLine:$false
+
+# Initialize spinner
+$spinner = @('/', '-', '\', '|')
+$spinnerIndex = 0
+[Console]::Write($spinner[$spinnerIndex])
+
 $taskList = @(
     'XblGameSaveTaskLogon',
     'XblGameSaveTask',
@@ -1270,12 +1316,32 @@ $taskList = @(
 )
 
 foreach ($task in $taskList) {
+    # Update spinner before checking each task
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
+    
     $scheduledTask = Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue 
     if ($null -ne $scheduledTask) {
+        # Update spinner before disabling task
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        [Console]::Write($spinner[$spinnerIndex])
+        
         Disable-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue | Out-Null
     }
+    
+    # Small delay for visual effect
+    Start-Sleep -Milliseconds 100
 }
-Write-TaskComplete
+
+# Replace spinner with done message
+[Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+[Console]::ForegroundColor = [System.ConsoleColor]::Green
+[Console]::Write(" done.")
+[Console]::ResetColor()
+[Console]::WriteLine()
+
 Write-Log "Disabled unnecessary scheduled tasks"
 #endregion Profile Customization
 
@@ -1368,7 +1434,7 @@ $acrobatInstalled = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Window
                      Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
 
 if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
-    #Write-Host "Adobe Acrobat Reader is already installed. Skipping installation." -ForegroundColor Green
+    Write-Host "Existing Adobe Acrobat Reader installation found." -ForegroundColor Cyan
     Write-Log "Adobe Acrobat Reader already installed, skipped installation."
 } else {
     # Create temp directory if it doesn't exist
@@ -1473,6 +1539,7 @@ if (Is-Windows11) {
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
         Write-Log "Windows 11 Debloat completed successfully."
+        Write-TaskComplete
     }
     catch {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
@@ -1510,11 +1577,11 @@ if (Is-Windows10) {
 ############################################################################################################
 #region DomainJoin
 # Domain Join Process
-Write-Delayed "`nChecking if domain join is required..." -NewLine:$true
+#Write-Delayed "`nChecking if domain join is required..." -NewLine:$true
 
 # Create a console-based input prompt while maintaining visual style
 [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-Write-Host "Do you want to join this computer to a domain? (Y/N): " -NoNewline
+Write-Delayed "Do you want to join this computer to a domain? (Y/N): " -NewLine:$false
 [Console]::ResetColor()
 $joinDomain = Read-Host
 
@@ -1607,7 +1674,6 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
 } else {
     # User chose to skip domain join
     Write-Host "Domain join process skipped." -ForegroundColor Yellow
-    Write-Host 
     Write-Log "Domain join process skipped by user"
 }
 
@@ -1815,6 +1881,59 @@ try {
     Write-Host " failed: $_" -ForegroundColor Red
     Write-Log "Error in computer rename process: $_"
 }
+
+<# Create a restore point
+Write-Delayed "Creating a system restore point..." -NewLine:$false
+
+# Initialize spinner
+$spinner = @('/', '-', '\', '|')
+$spinnerIndex = 0
+[Console]::Write($spinner[$spinnerIndex])
+
+try {
+    # Run the system restore point creation in a background job to allow for spinner animation
+    $job = Start-Job -ScriptBlock {
+        Checkpoint-Computer -Description "SOS Baseline Completed" -RestorePointType "APPLICATION_INSTALL" -ErrorAction Stop
+        return $true
+    }
+    
+    # Show spinner while waiting for the job to complete
+    while ($job.State -eq 'Running') {
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        [Console]::Write($spinner[$spinnerIndex])
+        Start-Sleep -Milliseconds 250
+    }
+    
+    # Get the result of the job
+    $result = Receive-Job -Job $job
+    Remove-Job -Job $job -Force
+    
+    if ($result -eq $true) {
+        # Replace spinner with done message
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::ForegroundColor = [System.ConsoleColor]::Green
+        [Console]::Write(" done.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        Write-Log "System restore point created successfully"
+    } else {
+        throw "Failed to create system restore point"
+    }
+} catch {
+    # Replace spinner with failed message
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write(" failed.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
+    Write-Host "An error occurred: $_" -ForegroundColor Red
+    Write-Log "Error creating system restore point: $_"
+}
+#>
+
 
 # Create a restore point
 Write-Delayed "Creating a system restore point..." -NewLine:$false
