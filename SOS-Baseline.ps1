@@ -875,7 +875,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         $userResponse = $null
 
         # Write prompt to transcript
-        Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
+        #Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
         
         # For visual appearance
         [Console]::ForegroundColor = [System.ConsoleColor]::Red
