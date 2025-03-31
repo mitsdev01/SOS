@@ -1504,6 +1504,130 @@ if (Is-Windows10) {
     }
 }
 
+############################################################################################################
+#                                               Domain Join                                                #
+#                                                                                                          #
+############################################################################################################
+#region DomainJoin
+
+# Domain Join Process
+Write-Delayed "Checking if domain join is required..." -NewLine:$false
+
+# Create a console-based input prompt while maintaining visual style
+[Console]::WriteLine()
+[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
+[Console]::Write("Do you want to join this computer to a domain? (Y/N): ")
+[Console]::ResetColor()
+$joinDomain = [Console]::ReadLine()
+
+# Check if the user wants to join the domain
+if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
+    # Prompt for domain information
+    [Console]::WriteLine()
+    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    [Console]::Write("Enter the domain name: ")
+    [Console]::ResetColor()
+    $domainName = [Console]::ReadLine()
+    
+    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    [Console]::Write("Enter the domain admin username: ")
+    [Console]::ResetColor()
+    $adminUser = [Console]::ReadLine()
+    
+    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    [Console]::Write("Enter the password: ")
+    [Console]::ResetColor()
+    
+    # Securely collect password without showing on screen
+    $securePassword = New-Object System.Security.SecureString
+    do {
+        $key = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        if ($key.VirtualKeyCode -ne 13) {
+            $securePassword.AppendChar($key.Character)
+            [Console]::Write("*")
+        }
+    } until ($key.VirtualKeyCode -eq 13)
+    [Console]::WriteLine()
+    
+    # Create a PSCredential object
+    $credential = New-Object System.Management.Automation.PSCredential ($adminUser, $securePassword)
+    
+    # Show spinner while attempting domain join
+    Write-Delayed "Attempting to join domain '$domainName'..." -NewLine:$false
+    
+    # Initialize spinner
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    [Console]::Write($spinner[$spinnerIndex])
+    
+    # Attempt to join the computer to the domain in a background job
+    $joinJob = Start-Job -ScriptBlock {
+        param($domainName, $credential)
+        try {
+            Add-Computer -DomainName $domainName -Credential $credential -Force -ErrorAction Stop
+            return @{ Success = $true; Message = "Successfully joined the computer to the domain: $domainName" }
+        } catch {
+            return @{ Success = $false; Message = "Failed to join the domain: $_" }
+        }
+    } -ArgumentList $domainName, $credential
+    
+    # Show spinner while waiting for the domain join to complete
+    while ($joinJob.State -eq 'Running') {
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::Write($spinner[$spinnerIndex])
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        Start-Sleep -Milliseconds 250
+    }
+    
+    # Get the result of the domain join operation
+    $result = Receive-Job -Job $joinJob
+    Remove-Job -Job $joinJob
+    
+    # Display the result
+    if ($result.Success) {
+        # Replace spinner with success message
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::ForegroundColor = [System.ConsoleColor]::Green
+        [Console]::Write(" done.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        Write-Log "Successfully joined the computer to domain: $domainName"
+        
+        # Inform user about restart requirement
+        [System.Windows.Forms.MessageBox]::Show(
+            "Successfully joined domain '$domainName'. A restart is required to complete the process.",
+            "Domain Join Successful",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        )
+    } else {
+        # Replace spinner with failure message
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::ForegroundColor = [System.ConsoleColor]::Red
+        [Console]::Write(" failed.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        Write-Log "Failed to join domain: $($result.Message)"
+        
+        # Show error message
+        [System.Windows.Forms.MessageBox]::Show(
+            $result.Message,
+            "Domain Join Failed",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        )
+    }
+} else {
+    # User chose to skip domain join
+    [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
+    [Console]::WriteLine("Domain join process skipped.")
+    [Console]::ResetColor()
+    Write-Log "Domain join process skipped by user"
+}
+
+#endregion DomainJoin
 
 ############################################################################################################
 #                                        Cleanup and Finalization                                        #
