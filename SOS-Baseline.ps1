@@ -1510,7 +1510,7 @@ if (Is-Windows10) {
 ############################################################################################################
 #region DomainJoin
 # Domain Join Process
-Write-Delayed "Checking if domain join is required..." -NewLine:$true
+Write-Delayed "`nChecking if domain join is required..." -NewLine:$true
 
 # Create a console-based input prompt while maintaining visual style
 [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
@@ -1606,9 +1606,7 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
     }
 } else {
     # User chose to skip domain join
-    [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-    [Console]::WriteLine("Domain join process skipped.")
-    [Console]::ResetColor()
+    Write-Host "Domain join process skipped." -ForegroundColor Yellow
     Write-Log "Domain join process skipped by user"
 }
 
