@@ -1408,7 +1408,7 @@ $acrobatInstalled = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Window
                      Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
 
 if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
-    #Write-Host "Adobe Acrobat Reader is already installed. Skipping installation." -ForegroundColor Green
+    Write-Host "Adobe Acrobat Reader is already installed. Skipping installation." -ForegroundColor Green
     Write-Log "Adobe Acrobat Reader already installed, skipped installation."
 } else {
     # Create temp directory if it doesn't exist
