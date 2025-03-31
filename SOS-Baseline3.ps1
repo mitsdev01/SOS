@@ -1694,7 +1694,7 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
     }
 } else {
     # User chose to skip domain join
-    Write-Host "Domain join process skipped." -ForegroundColor Yellow
+    #Write-Host "Domain join process skipped." -ForegroundColor Yellow
     Write-Log "Domain join process skipped by user"
 }
 
