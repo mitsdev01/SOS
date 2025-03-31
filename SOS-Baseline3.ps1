@@ -144,26 +144,34 @@ function Write-Delayed {
         [System.ConsoleColor]$Color = [System.ConsoleColor]::White
     )
     
-    # Create a separate function just for transcript/log files
-    # This prevents the letter-by-letter output in logs
-    $fullMessage = $Text
-    Write-Log "UI Message: $fullMessage"
+    # Add to log file directly (not affected by transcript)
+    Write-Log "UI: $Text"
     
-    # For visual effect in console, we'll still do the character-by-character output
-    # But we'll use a more direct console method to avoid transcript issues
-    $currentColor = [Console]::ForegroundColor
+    # Write to the transcript using PowerShell's standard output
+    # This won't be affected by the character-by-character display
+    $Host.UI.RawUI.FlushInputBuffer()
+    Write-Output $Text
+    
+    # For visual display, we'll use Console methods to show typing animation
+    $originalColor = [Console]::ForegroundColor
     [Console]::ForegroundColor = $Color
     
-    foreach ($Char in $Text.ToCharArray()) {
-        [Console]::Write($Char)
+    # Type each character with a delay
+    foreach ($char in $Text.ToCharArray()) {
+        [Console]::Write($char)
         Start-Sleep -Milliseconds 25
     }
     
+    # Add newline if requested
     if ($NewLine) {
         [Console]::WriteLine()
+    } else {
+        # If no newline, make sure to position cursor correctly
+        [Console]::Write("")
     }
     
-    [Console]::ForegroundColor = $currentColor
+    # Restore original color
+    [Console]::ForegroundColor = $originalColor
 }
 
 function Write-Log {
@@ -401,8 +409,34 @@ function Show-SpinnerAnimation {
 
 #endregion Functions
 
-# Start transcript logging
-Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
+# Start transcript logging with better handling
+# Add a function to start transcript with better error handling
+function Start-CleanTranscript {
+    param (
+        [string]$Path
+    )
+    
+    try {
+        # Stop any existing transcript
+        try { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null } catch {}
+        
+        # Start new transcript
+        Start-Transcript -Path $Path -Force -ErrorAction Stop | Out-Null
+        Write-Output "======================================================================================"
+        Write-Output "                          SOS - Workstation Baseline Script                           "
+        Write-Output "                                 version $ScriptVersion                                "
+        Write-Output "======================================================================================"
+        Write-Output ""
+        return $true
+    }
+    catch {
+        Write-Warning "Failed to start transcript: $_"
+        return $false
+    }
+}
+
+# Call the function after the necessary variables are set
+Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
 
 ############################################################################################################
 #                                             Title Screen                                                 #
