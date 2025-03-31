@@ -1732,8 +1732,14 @@ $allSuccessful = $true
 foreach ($file in $TempFiles) {
     if (Test-Path $file) {
         try {
-            Remove-Item -Path $file -Force -ErrorAction Stop
-            Write-Log "Removed temporary file: $file"
+            if ((Get-Item $file) -is [System.IO.DirectoryInfo]) {
+                # It's a directory, use -Recurse
+                Remove-Item -Path $file -Recurse -Force -ErrorAction Stop
+            } else {
+                # It's a file
+                Remove-Item -Path $file -Force -ErrorAction Stop
+            }
+            Write-Log "Removed temporary file/folder: $file"
         } catch {
             $allSuccessful = $false
             Write-Log "Failed to remove: $file - $($_.Exception.Message)"
