@@ -44,7 +44,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     return
 }
 
-# Initial setup
+# Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
 $ScriptVersion = "1.4.3"
 $ErrorActionPreference = 'SilentlyContinue'
