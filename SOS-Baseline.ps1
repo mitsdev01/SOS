@@ -1511,43 +1511,29 @@ if (Is-Windows10) {
 #region DomainJoin
 
 # Domain Join Process
-Write-Delayed "Checking if domain join is required..." -NewLine:$false
+Write-Delayed "Checking if domain join is required..." -NewLine:$true
 
 # Create a console-based input prompt while maintaining visual style
-[Console]::WriteLine()
 [Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-[Console]::Write("Do you want to join this computer to a domain? (Y/N): ")
+Write-Host "Do you want to join this computer to a domain? (Y/N): " -NoNewline
 [Console]::ResetColor()
-$joinDomain = [Console]::ReadLine()
+$joinDomain = Read-Host
 
 # Check if the user wants to join the domain
 if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
     # Prompt for domain information
     [Console]::WriteLine()
     [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
-    [Console]::Write("Enter the domain name: ")
+    $domainName = Read-Host "Enter the domain name"
     [Console]::ResetColor()
-    $domainName = [Console]::ReadLine()
     
     [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
-    [Console]::Write("Enter the domain admin username: ")
+    $adminUser = Read-Host "Enter the domain admin username"
     [Console]::ResetColor()
-    $adminUser = [Console]::ReadLine()
     
     [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
-    [Console]::Write("Enter the password: ")
+    $securePassword = Read-Host "Enter the password" -AsSecureString
     [Console]::ResetColor()
-    
-    # Securely collect password without showing on screen
-    $securePassword = New-Object System.Security.SecureString
-    do {
-        $key = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-        if ($key.VirtualKeyCode -ne 13) {
-            $securePassword.AppendChar($key.Character)
-            [Console]::Write("*")
-        }
-    } until ($key.VirtualKeyCode -eq 13)
-    [Console]::WriteLine()
     
     # Create a PSCredential object
     $credential = New-Object System.Management.Automation.PSCredential ($adminUser, $securePassword)
