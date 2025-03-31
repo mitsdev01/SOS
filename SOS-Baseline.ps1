@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.4.2                                            #
+#                                                 Version 1.4.6                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.4.2
+    Version:        1.4.6
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -44,9 +44,9 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     return
 }
 
-# Initial setup
+# Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.4.2"
+$ScriptVersion = "1.4.6"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -865,9 +865,9 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         Write-Host "Bitlocker is already configured on $env:SystemDrive - " -ForegroundColor Red -NoNewline
         
         # For visual appearance
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        Write-Delayed "Bitlocker is already configured on $env:SystemDrive - " -NewLine:$false
-        [Console]::ResetColor()
+        #[Console]::ForegroundColor = [System.ConsoleColor]::Red
+        #Write-Delayed "Bitlocker is already configured on $env:SystemDrive - " -NewLine:$false
+       # [Console]::ResetColor()
 
         # Setup for non-blocking read with timeout
         $timeoutSeconds = 10
@@ -875,7 +875,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         $userResponse = $null
 
         # Write prompt to transcript
-        Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
+        #Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
         
         # For visual appearance
         [Console]::ForegroundColor = [System.ConsoleColor]::Red
@@ -1509,9 +1509,109 @@ if (Is-Windows10) {
 #                                                                                                          #
 ############################################################################################################
 #region DomainJoin
+# Domain Join Process
+Write-Delayed "`nChecking if domain join is required..." -NewLine:$true
 
-# Join Domain
-irm https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/JoinComputertoad.ps1 | iex
+# Create a console-based input prompt while maintaining visual style
+[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
+Write-Host "Do you want to join this computer to a domain? (Y/N): " -NoNewline
+[Console]::ResetColor()
+$joinDomain = Read-Host
+
+# Check if the user wants to join the domain
+if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
+    # Prompt for domain information
+    [Console]::WriteLine()
+    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    $domainName = Read-Host "Enter the domain name"
+    [Console]::ResetColor()
+    
+    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    $adminUser = Read-Host "Enter the domain admin username"
+    [Console]::ResetColor()
+    
+    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    $securePassword = Read-Host "Enter the password" -AsSecureString
+    [Console]::ResetColor()
+    
+    # Create a PSCredential object
+    $credential = New-Object System.Management.Automation.PSCredential ($adminUser, $securePassword)
+    
+    # Show spinner while attempting domain join
+    Write-Delayed "Attempting to join domain '$domainName'..." -NewLine:$false
+    
+    # Initialize spinner
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    [Console]::Write($spinner[$spinnerIndex])
+    
+    # Attempt to join the computer to the domain in a background job
+    $joinJob = Start-Job -ScriptBlock {
+        param($domainName, $credential)
+        try {
+            Add-Computer -DomainName $domainName -Credential $credential -Force -ErrorAction Stop
+            return @{ Success = $true; Message = "Successfully joined the computer to the domain: $domainName" }
+        } catch {
+            return @{ Success = $false; Message = "Failed to join the domain: $_" }
+        }
+    } -ArgumentList $domainName, $credential
+    
+    # Show spinner while waiting for the domain join to complete
+    while ($joinJob.State -eq 'Running') {
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::Write($spinner[$spinnerIndex])
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        Start-Sleep -Milliseconds 250
+    }
+    
+    # Get the result of the domain join operation
+    $result = Receive-Job -Job $joinJob
+    Remove-Job -Job $joinJob
+    
+    # Display the result
+    if ($result.Success) {
+        # Replace spinner with success message
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::ForegroundColor = [System.ConsoleColor]::Green
+        [Console]::Write(" done.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        Write-Log "Successfully joined the computer to domain: $domainName"
+        
+        # Inform user about restart requirement
+        [System.Windows.Forms.MessageBox]::Show(
+            "Successfully joined domain '$domainName'. A restart is required to complete the process.",
+            "Domain Join Successful",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        )
+    } else {
+        # Replace spinner with failure message
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        [Console]::ForegroundColor = [System.ConsoleColor]::Red
+        [Console]::Write(" failed.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        Write-Log "Failed to join domain: $($result.Message)"
+        
+        # Show error message
+        [System.Windows.Forms.MessageBox]::Show(
+            $result.Message,
+            "Domain Join Failed",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        )
+    }
+} else {
+    # User chose to skip domain join
+    Write-Host "Domain join process skipped." -ForegroundColor Yellow
+    Write-Host 
+    Write-Log "Domain join process skipped by user"
+}
+
+#endregion DomainJoin
 
 
 ############################################################################################################
@@ -1519,7 +1619,7 @@ irm https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/JoinComputer
 #                                                                                                          #
 ############################################################################################################
 #region Baseline Cleanup
-Start-Sleep -seconds 60
+#Start-Sleep -seconds 60
 # Enable and start Windows Update Service
 Write-Delayed "Enabling Windows Update Service..." -NewLine:$false
 Set-Service -Name wuauserv -StartupType Manual
