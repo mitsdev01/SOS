@@ -144,16 +144,26 @@ function Write-Delayed {
         [System.ConsoleColor]$Color = [System.ConsoleColor]::White
     )
     
-    # Process each character with a slight delay for typing effect
+    # Create a separate function just for transcript/log files
+    # This prevents the letter-by-letter output in logs
+    $fullMessage = $Text
+    Write-Log "UI Message: $fullMessage"
+    
+    # For visual effect in console, we'll still do the character-by-character output
+    # But we'll use a more direct console method to avoid transcript issues
+    $currentColor = [Console]::ForegroundColor
+    [Console]::ForegroundColor = $Color
+    
     foreach ($Char in $Text.ToCharArray()) {
-        Write-Host $Char -NoNewline -ForegroundColor $Color
+        [Console]::Write($Char)
         Start-Sleep -Milliseconds 25
     }
     
-    # Add a newline if requested
     if ($NewLine) {
-        Write-Host ""
+        [Console]::WriteLine()
     }
+    
+    [Console]::ForegroundColor = $currentColor
 }
 
 function Write-Log {
