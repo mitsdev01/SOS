@@ -1635,6 +1635,45 @@ try {
     Write-Log "Error creating system restore point: $_"
 }
 
+# Define temp files to clean up
+$TempFiles = @(
+    "c:\temp\SOS-Debloat.zip",
+    "c:\temp\update_windows.ps1",
+    "c:\temp\BaselineComplete.ps1",
+    "c:\temp\DRMM-Install.log"
+)
+
+Write-Delayed "Cleaning up temporary files..." -NewLine:$false
+
+# Keep track of success for all deletions
+$allSuccessful = $true
+
+# Delete only specific temp files
+foreach ($file in $TempFiles) {
+    if (Test-Path $file) {
+        try {
+            Remove-Item -Path $file -Force -ErrorAction Stop
+            Write-Log "Removed temporary file: $file"
+        } catch {
+            $allSuccessful = $false
+            Write-Log "Failed to remove: $file - $($_.Exception.Message)"
+        }
+    }
+}
+
+# Don't remove the wakelock.flag until the very end
+if (Test-Path "c:\temp\wakelock.flag") {
+    Remove-Item -Path "c:\temp\wakelock.flag" -Force -ErrorAction SilentlyContinue
+}
+
+# Report success in console and log
+if ($allSuccessful) {
+    Write-TaskComplete
+} else {
+    Write-Host " completed with some errors." -ForegroundColor Yellow
+}
+
+Write-Log "Temporary files cleanup completed"
 #endregion Baseline Cleanup
 
 ############################################################################################################
