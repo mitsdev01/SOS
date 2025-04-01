@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.5.6                                            #
+#                                                 Version 1.5.7                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,11 +22,11 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.5.6
+    Version:        1.5.7
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
-                    Windows 10/11 Professional or Enterprise
+                    Windows 10/11 Professional
     
 .EXAMPLE
     .\SOS-Baseline.ps1
@@ -45,15 +45,16 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.5.6"
+$ScriptVersion = "1.5.7"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
-
 # Store system type for use in termination handler
 $global:IsMobileDevice = $false
+
+Set-ExecutionPolicy RemoteSigned -Force *> $null
+
 
 # Set up termination handler for Ctrl+C and window closing
 $null = [Console]::TreatControlCAsInput = $true
