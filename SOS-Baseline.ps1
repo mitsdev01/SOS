@@ -202,23 +202,22 @@ function Write-TaskComplete {
     # Log to file
     Write-Log "Task completed successfully"
     
-    # Write to both transcript and console with single call
-    # This replaces the separate Write-Host and [Console]::Write calls
-    # WriteLine produces a newline automatically
-    Write-Host " done." -ForegroundColor Green
+    # Write to both transcript and console without creating a new line
+    Write-Host " done." -ForegroundColor Green -NoNewline
     
-    # No need for additional newline here, Write-Host already adds one
+    # Add the newline after the "done." message
+    Write-Host ""
 }
 
 function Write-TaskFailed {
     # Log to file
     Write-Log "Task failed"
     
-    # Write to both transcript and console with single call
-    # This replaces the separate Write-Host and [Console]::Write calls
-    Write-Host " failed." -ForegroundColor Red
+    # Write to both transcript and console without creating a new line
+    Write-Host " failed." -ForegroundColor Red -NoNewline
     
-    # No need for additional newline here, Write-Host already adds one
+    # Add the newline after the "failed." message
+    Write-Host ""
 }
 
 function Move-ProcessWindowToTopRight {
