@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.5.0                                            #
+#                                                 Version 1.5.4-beta                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.5.0
+    Version:        1.5.4
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.5.0"
+$ScriptVersion = "1.5.4j"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -108,6 +108,23 @@ $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.Ps
 if (-not (Test-Path $TempFolder)) { New-Item -Path $TempFolder -ItemType Directory | Out-Null }
 if (-not (Test-Path $LogFile)) { New-Item -Path $LogFile -ItemType File | Out-Null }
 
+# Add log file header
+$headerBorder = "=" * 80
+$header = @"
+$headerBorder
+                        SOS WORKSTATION BASELINE LOG
+                             Version $ScriptVersion
+                         $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+$headerBorder
+
+#Computer: $env:COMPUTERNAME
+#User: $env:USERNAME
+#Windows: $(Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Caption)
+#$headerBorder
+
+"@
+Add-Content -Path $LogFile -Value $header
+
 # Set working directory
 Set-Location -Path $TempFolder
 
@@ -137,7 +154,6 @@ function Print-Middle($Message, $Color = "White") {
     Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
     Write-Host -ForegroundColor $Color $Message
 }
-
 function Write-Delayed {
     param(
         [string]$Text, 
@@ -145,37 +161,64 @@ function Write-Delayed {
         [System.ConsoleColor]$Color = [System.ConsoleColor]::White
     )
     
-    # Process each character with a slight delay for typing effect
-    foreach ($Char in $Text.ToCharArray()) {
-        Write-Host $Char -NoNewline -ForegroundColor $Color
-        Start-Sleep -Milliseconds 25
-    }
+    # Add to log file
+    Write-Log "$Text"
     
-    # Add a newline if requested
+    # Write to transcript in one go (not character by character)
+    Write-Host $Text -NoNewline -ForegroundColor $Color
     if ($NewLine) {
         Write-Host ""
     }
+    
+    # Clear the line where we just wrote to avoid duplication in console
+    $originalColor = [Console]::ForegroundColor
+    [Console]::ForegroundColor = $Color
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
+    [Console]::Write("".PadRight([Console]::BufferWidth - 1))  # Clear the line
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
+    
+    # Now do the visual character-by-character animation for the console only
+    foreach ($char in $Text.ToCharArray()) {
+        [Console]::Write($char)
+        Start-Sleep -Milliseconds 25
+    }
+    
+    # Add newline if requested
+    if ($NewLine) {
+        [Console]::WriteLine()
+    }
+    
+    # Restore original color
+    [Console]::ForegroundColor = $originalColor
 }
 
 function Write-Log {
     param ([string]$Message)
-    Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
-    # Also write to transcript for better logging
-    #Write-Verbose "LOG: $Message" -Verbose
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Add-Content -Path $LogFile -Value "[$timestamp] $Message"
 }
 
 function Write-TaskComplete {
-    # Write to transcript
+    # Log to file
+    Write-Log "Task completed successfully"
+    
+    # Write to both transcript and console with single call
+    # This replaces the separate Write-Host and [Console]::Write calls
+    # WriteLine produces a newline automatically
     Write-Host " done." -ForegroundColor Green
     
-    # Original visual formatting has been removed to prevent duplicate output
+    # No need for additional newline here, Write-Host already adds one
 }
 
 function Write-TaskFailed {
-    # Write to transcript
+    # Log to file
+    Write-Log "Task failed"
+    
+    # Write to both transcript and console with single call
+    # This replaces the separate Write-Host and [Console]::Write calls
     Write-Host " failed." -ForegroundColor Red
     
-    # Original visual formatting has been removed to prevent duplicate output
+    # No need for additional newline here, Write-Host already adds one
 }
 
 function Move-ProcessWindowToTopRight {
@@ -396,18 +439,54 @@ function Show-SpinnerAnimation {
     }
 }
 
+function Show-Spinner {
+    param (
+        [int]$SpinnerIndex,
+        [string[]]$SpinnerChars = @('/', '-', '\', '|'),
+        [int]$CursorLeft,
+        [int]$CursorTop
+    )
+    
+    # Use only Console methods to avoid writing to transcript
+    [Console]::SetCursorPosition($CursorLeft, $CursorTop)
+    [Console]::Write($SpinnerChars[$SpinnerIndex % $SpinnerChars.Length])
+}
+
 #endregion Functions
 
-# Start transcript logging
-#Start-Transcript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
+# Start transcript logging with better handling
+# Add a function to start transcript with better error handling
+function Start-CleanTranscript {
+    param (
+        [string]$Path
+    )
+    
+    try {
+        # Stop any existing transcript
+        try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
+        
+        # Start new transcript
+        Start-Transcript -Path $Path -Force -ErrorAction Stop
+        
+        # Don't write the header here anymore, it will be displayed in the Title Screen section
+        return $true
+    }
+    catch {
+        Write-Warning "Failed to start transcript: $_"
+        return $false
+    }
+}
 
+# Call the function after the necessary variables are set
+Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
+Clear-Host
 ############################################################################################################
 #                                             Title Screen                                                 #
 #                                                                                                          #
 ############################################################################################################
 #region Title Screen
 
-# Print Scritp Title
+# Print Script Title - This will be displayed and captured in the transcript
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor "Green" $Padding -NoNewline
 Print-Middle "SOS - Workstation Baseline Script"
@@ -422,16 +501,9 @@ Start-Sleep -Seconds 2
 #                                                                                                          #
 ############################################################################################################
 # Start baseline
-#[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-#[Console]::Write("`n")
-#Write-Delayed "Starting workstation baseline..." -NewLine:$false
-#[Console]::Write("`n")
-#[Console]::ResetColor() 
-#[Console]::WriteLine()
-#Start-Sleep -Seconds 2
 
-# Start baseline log file
-Write-Log "Automated workstation baseline has started"
+# Baseline log file
+#Write-Log "Automated workstation baseline has started"
 
 # Check for required modules
 Write-Host "Checking for required modules..." -NoNewline
@@ -448,8 +520,7 @@ try {
     
     # Display the spinner while the job is running
     while ($job.State -eq 'Running') {
-        [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
-        [Console]::Write($spinner[$spinnerIndex])
+        Show-Spinner -SpinnerIndex $spinnerIndex -CursorLeft $originalCursorLeft -CursorTop $originalCursorTop
         Start-Sleep -Milliseconds 100
         $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
     }
@@ -469,9 +540,9 @@ try {
     [Console]::ResetColor()
     [Console]::WriteLine()
     
-    # Ensure completion is written to transcript
+    # Write to transcript
     #Write-Host "Module check completed successfully" -ForegroundColor Green
-    Write-Log "Module check completed successfully"
+    #Write-Log "Module check completed successfully"
 }
 catch {
     # Handle errors
@@ -493,7 +564,6 @@ catch {
     
     # Ensure error is written to transcript
     Write-Host "Module check failed: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
     Write-Log "Module check failed: $($_.Exception.Message)"
 }
 
@@ -561,7 +631,7 @@ while ($true) {
 # Agent Installation Configuration
 $TempFolder = "c:\temp"
 $file = "$TempFolder\AgentInstall.exe"
-$LogFile = "c:\temp\DRMM-Install.log"
+
 $agentName = "CagService"
 $agentPath = "C:\Program Files (x86)\CentraStage"
 $installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/ce8a0a8d-84bd-4baa-850a-6f46e9c37dfc"
@@ -741,7 +811,14 @@ if ($user) {
 #                                                                                                          #
 ############################################################################################################
 #region Windows Update
-Write-Delayed "Suspending Windows Update..." -NewLine:$false
+# Skip writing to transcript/output directly, just use console methods
+# This prevents duplicate "Suspending Windows Update..." messages
+[Console]::ForegroundColor = [System.ConsoleColor]::White
+[Console]::Write("Suspending Windows Update...")
+[Console]::ResetColor()
+
+# Add to log file
+Write-Log "Suspending Windows Update service"
 
 # Initialize spinner
 $spinner = @('/', '-', '\', '|')
@@ -792,21 +869,19 @@ Start-Sleep -Milliseconds 100
 # Check both operations succeeded
 $service = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
 if ($stopSuccess -and $disableSuccess -and $service.Status -eq 'Stopped') {
-    # Replace spinner with done message
+    # Clear the spinner character by moving cursor position back
     [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
+    
+    # Use Write-Host for both transcript and console display
+    Write-Host " done." -ForegroundColor Green
     
     Write-Log "Windows Update service suspended successfully"
 } else {
-    # Replace spinner with failed message
+    # Clear the spinner character by moving cursor position back
     [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" failed.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
+    
+    # Use Write-Host for both transcript and console display
+    Write-Host " failed." -ForegroundColor Red
     
     Write-Log "Failed to suspend Windows Update service completely"
 }
@@ -905,11 +980,6 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         # Write to transcript
         Write-Host "Bitlocker is already configured on $env:SystemDrive - " -ForegroundColor Red -NoNewline
         
-        # For visual appearance
-        #[Console]::ForegroundColor = [System.ConsoleColor]::Red
-        #Write-Delayed "Bitlocker is already configured on $env:SystemDrive - " -NewLine:$false
-       # [Console]::ResetColor()
-
         # Setup for non-blocking read with timeout
         $timeoutSeconds = 10
         $endTime = (Get-Date).AddSeconds($timeoutSeconds)
@@ -919,9 +989,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         #Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
         
         # For visual appearance
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
-        [Console]::ResetColor()
+        Write-Host -ForegroundColor Red "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
 
         while ($true) {
             if ([Console]::KeyAvailable) {
@@ -934,8 +1002,8 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
                 }
             } elseif ((Get-Date) -ge $endTime) {
                 # Log timeout for transcript
-                Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
-                Write-Host " done." -ForegroundColor Green
+                #Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
+                #Write-Host " done." -ForegroundColor Green
                 
                 # For visual appearance
                 Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
@@ -1040,10 +1108,8 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         
         # Replace spinner with done message
         [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write(" done.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
+        # Use Write-Host instead of Console method to ensure proper transcript logging
+        Write-Host " done." -ForegroundColor Green
         
         if ($BitLockerVolume.KeyProtector) {
             # Get recovery information
@@ -1065,10 +1131,7 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
             # Log success
             Write-Log "BitLocker encryption configured successfully with Recovery ID: $recoveryId"
         } else {
-            [Console]::ForegroundColor = [System.ConsoleColor]::Red
-            [Console]::Write("Bitlocker disk encryption is not configured.")
-            [Console]::ResetColor()
-            [Console]::WriteLine()
+            Write-Host -ForegroundColor Red "Bitlocker disk encryption is not configured."
             
             # Log failure
             Write-Log "Failed to configure BitLocker encryption"
@@ -1338,10 +1401,8 @@ foreach ($task in $taskList) {
 
 # Replace spinner with done message
 [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-[Console]::ForegroundColor = [System.ConsoleColor]::Green
-[Console]::Write(" done.")
-[Console]::ResetColor()
-[Console]::WriteLine()
+# Use Write-Host instead of Console methods
+Write-Host " done." -ForegroundColor Green
 
 Write-Log "Disabled unnecessary scheduled tasks"
 #endregion Profile Customization
@@ -1358,10 +1419,8 @@ $O365 = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVer
 Where-Object { $_.DisplayName -like "*Microsoft 365 Apps for enterprise - en-us*" }
 
 if ($O365) {
-    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
-    [Console]::Write("Existing Microsoft Office installation found.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()   
+    Write-Host -ForegroundColor Cyan "Existing Microsoft Office installation found."
+    Write-Log "Existing Microsoft Office installation found."
 } else {
     $OfficePath = "c:\temp\OfficeSetup.exe"
     if (-not (Test-Path $OfficePath)) {
@@ -1392,20 +1451,14 @@ if ($O365) {
             taskkill /f /im OfficeC2RClient.exe *> $null
             Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
         } else {
+            Write-Host -ForegroundColor Red "Microsoft Office 365 installation failed."
             Write-Log "Office 365 installation failed."
-            [Console]::ForegroundColor = [System.ConsoleColor]::Red
-            [Console]::Write("`nMicrosoft Office 365 installation failed.")
-            [Console]::ResetColor()
-            [Console]::WriteLine()  
         }   
     }
     else {
         # Report download error
         Write-Log "Office download failed!"
-        [Console]::ForegroundColor = [System.ConsoleColor]::Red
-        [Console]::Write("Download failed or file size does not match.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
+        Write-Host -ForegroundColor Red "Download failed or file size does not match."
         Start-Sleep -Seconds 10
         Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
     }
@@ -1419,12 +1472,7 @@ if ($O365) {
 ############################################################################################################
 #region Acrobat Install
 
-# Initialize log file if not already defined
-if (-not (Get-Variable -Name LogFile -ErrorAction SilentlyContinue)) {
-    $LogFile = "$env:TEMP\AcrobatInstallation.log"
-}
-
-# Define the URL and file path for the Acrobat Reader installer
+# URL and file path for the Acrobat Reader installer
 $URL = "https://axcientrestore.blob.core.windows.net/win11/AcroRdrDC2500120432_en_US.exe"
 $AcroFilePath = "C:\temp\AcroRdrDC2500120432_en_US.exe"
 
@@ -1581,26 +1629,20 @@ if (Is-Windows10) {
 #Write-Delayed "`nChecking if domain join is required..." -NewLine:$true
 
 # Create a console-based input prompt while maintaining visual style
-[Console]::ForegroundColor = [System.ConsoleColor]::Yellow
-Write-Delayed "Do you want to join this computer to a domain? (Y/N): " -NewLine:$false
-[Console]::ResetColor()
+Write-Host -ForegroundColor Yellow "Do you want to join this computer to a domain? (Y/N): " -NoNewline
 $joinDomain = Read-Host
 
 # Check if the user wants to join the domain
 if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
     # Prompt for domain information
-    [Console]::WriteLine()
-    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    Write-Host -ForegroundColor Cyan "Enter the domain name"
     $domainName = Read-Host "Enter the domain name"
-    [Console]::ResetColor()
-    
-    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+   
+    Write-Host -ForegroundColor Cyan "Enter the domain admin username"
     $adminUser = Read-Host "Enter the domain admin username"
-    [Console]::ResetColor()
     
-    [Console]::ForegroundColor = [System.ConsoleColor]::Cyan
+    Write-Host -ForegroundColor Cyan "Enter the password"
     $securePassword = Read-Host "Enter the password" -AsSecureString
-    [Console]::ResetColor()
     
     # Create a PSCredential object
     $credential = New-Object System.Management.Automation.PSCredential ($adminUser, $securePassword)
@@ -1674,7 +1716,7 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
     }
 } else {
     # User chose to skip domain join
-    Write-Host "Domain join process skipped." -ForegroundColor Yellow
+    #Write-Host "Domain join process skipped." -ForegroundColor Yellow
     Write-Log "Domain join process skipped by user"
 }
 
@@ -1695,21 +1737,15 @@ Start-Service -Name wuauserv
 Start-Sleep -Seconds 5
 $service = Get-Service -Name wuauserv
 if ($service.Status -eq 'Running') {
-    # Write to transcript
-    # Write-Host " done." -ForegroundColor Green
-    # Visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
-    [Console]::WriteLine() 
+    # Use a single Write-Host for both transcript and console display
+    Write-Host " done." -ForegroundColor Green
+    
+    Write-Log "Windows Update Service enabled and started successfully."
 } else {
-    # Write to transcript
+    # Use a single Write-Host for both transcript and console display
     Write-Host " failed." -ForegroundColor Red
-    # Visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" failed.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()    
+    
+    Write-Log "Windows Update Service failed to enable and start."
 }
 
 # Installing Windows Updates
@@ -1744,23 +1780,16 @@ if (Test-Path "c:\temp\update_windows.ps1") {
     Move-ProcessWindowToTopRight -processName "Windows PowerShell" | Out-Null
     Start-Sleep -Seconds 1
     
-    # Write to transcript
-    #Write-Host " done." -ForegroundColor Green
-    # Visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
+    # Use a single Write-Host for both transcript and console display
+    Write-Host " done." -ForegroundColor Green
+    
     Write-Log "All available Windows updates are installed."
      
 } else {
-    # Write to transcript
+    # Use a single Write-Host for both transcript and console display
     Write-Host "Windows Update execution failed!" -ForegroundColor Red
-    # Visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    Write-Delayed "Windows Update execution failed!" -NewLine:$false
-    [Console]::ResetColor()
-    [Console]::WriteLine()  
+    
+    Write-Log "Windows Update execution failed!"
 }
 
 # Create WakeLock exit flag to stop the WakeLock script
@@ -1788,6 +1817,36 @@ try {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
+    # Add P/Invoke declarations for setting window position and foreground
+    Add-Type -TypeDefinition @"
+        using System;
+        using System.Runtime.InteropServices;
+        
+        public class ForegroundWindow {
+            [DllImport("user32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool SetForegroundWindow(IntPtr hWnd);
+            
+            [DllImport("user32.dll")]
+            public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+            
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool BringWindowToTop(IntPtr hWnd);
+            
+            [DllImport("user32.dll")]
+            public static extern IntPtr GetForegroundWindow();
+            
+            [DllImport("user32.dll")]
+            public static extern bool FlashWindow(IntPtr hwnd, bool bInvert);
+
+            [DllImport("user32.dll")]
+            public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+            
+            public const int GWL_EXSTYLE = -20;
+            public const int WS_EX_TOPMOST = 0x0008;
+        }
+"@
+
     # Create form
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Rename Machine"
@@ -1796,7 +1855,8 @@ try {
     $form.FormBorderStyle = "FixedDialog"
     $form.MaximizeBox = $false
     $form.MinimizeBox = $false
-
+    $form.TopMost = $true
+    
     # Create label
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(10, 20)
@@ -1855,6 +1915,28 @@ try {
         }
     })
 
+    # Additional form setup before showing
+    $form.Add_Shown({
+        # Set focus to the form
+        $form.Activate()
+        $form.Focus()
+        
+        # Delay to ensure other operations are complete
+        Start-Sleep -Milliseconds 100
+        
+        # These force the window to be on top and active
+        [ForegroundWindow]::BringWindowToTop($form.Handle)
+        [ForegroundWindow]::SetForegroundWindow($form.Handle)
+        [ForegroundWindow]::ShowWindow($form.Handle, 5) # SW_SHOW
+        
+        # Flash the window to get attention
+        [ForegroundWindow]::FlashWindow($form.Handle, $true)
+        
+        # Set window as topmost via the Windows API
+        [ForegroundWindow]::SetWindowLong($form.Handle, [ForegroundWindow]::GWL_EXSTYLE, 
+            [ForegroundWindow]::WS_EX_TOPMOST)
+    })
+
     # Show the form
     $result = $form.ShowDialog()
 
@@ -1867,11 +1949,31 @@ try {
             # Rename the machine
             Rename-Computer -NewName $newName -Force
             Write-Log "Machine renamed to: $newName (requires restart)"
-            [System.Windows.Forms.MessageBox]::Show("Computer has been renamed to '$newName'. Changes will take effect after restart.", "Rename Successful", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            
+            # Create a topmost message box for confirmation
+            $confirmBox = New-Object System.Windows.Forms.Form
+            $confirmBox.TopMost = $true
+            [System.Windows.Forms.MessageBox]::Show(
+                $confirmBox,
+                "Computer has been renamed to '$newName'. Changes will take effect after restart.",
+                "Rename Successful",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
             Write-TaskComplete
         } else {
             Write-Log "Invalid Machine name entered: $newName"
-            [System.Windows.Forms.MessageBox]::Show("Invalid Machine name. Rename skipped.", "Rename Failed", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+            
+            # Create a topmost message box for error
+            $errorBox = New-Object System.Windows.Forms.Form
+            $errorBox.TopMost = $true
+            [System.Windows.Forms.MessageBox]::Show(
+                $errorBox,
+                "Invalid Machine name. Rename skipped.", 
+                "Rename Failed", 
+                [System.Windows.Forms.MessageBoxButtons]::OK, 
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            )
             Write-Host " skipped - invalid name." -ForegroundColor Yellow
         }
     } else {
@@ -2023,10 +2125,20 @@ Write-Host " "
 #endregion Summary
 
 # Stopping transcript
-#Stop-Transcript | Out-Null
+Stop-Transcript
 
 # Update log file with completion
 Write-Log "Automated workstation baseline has completed successfully"
+
+# Add footer to log file
+$footerBorder = "=" * 80
+$footer = @"
+$footerBorder
+                Baseline Configuration Completed Successfully
+                      $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+$footerBorder
+"@
+Add-Content -Path $LogFile -Value $footer
 
 Read-Host -Prompt "Press enter to exit"
 Stop-Process -Id $PID -Force

@@ -1,61 +1,20 @@
 Clear-Host
 
-$ScriptVersion = "1.0.4"
+$ScriptVersion = "1.0.1"
 
 # Add Print-Middle function from SOS-Baseline3.ps1
 function Print-Middle($Message, $Color = "White") {
-    # Get the console width
-    $consoleWidth = [System.Console]::BufferWidth
-    
-    # Calculate padding - ensure it doesn't result in negative numbers
-    $padding = [Math]::Max(0, [Math]::Floor(($consoleWidth / 2) - ($Message.Length / 2)))
-    
-    # Create padded string
-    $paddedMessage = " " * $padding + $Message
-    
-    # Ensure we don't exceed buffer width
-    if ($paddedMessage.Length -gt $consoleWidth) {
-        $paddedMessage = $paddedMessage.Substring(0, $consoleWidth - 1)
-    }
-    
-    # Output with given color
-    Write-Host $paddedMessage -ForegroundColor $Color
+    Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
+    Write-Host -ForegroundColor $Color $Message
 }
 
 # Title Display using Print-Middle
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor Green $Padding
-Print-Middle "SOS - Workstation Baseline Verification" "Yellow"
+Print-Middle "SOS - Workstation Baseline Verification" "Cyan"
 Print-Middle "Version $ScriptVersion" "Yellow"
 Write-Host -ForegroundColor Green $Padding
 Write-Host ""
-
-# Check definitions status early
-Write-Host "Definitions: " -NoNewline
-try {
-    $avCheck = Get-WmiObject -Namespace "root\SecurityCenter2" -Class AntiVirusProduct -ErrorAction Stop | Select-Object -First 1
-    if ($avCheck) {
-        # Decode status based on SecurityCenter2 standard codes
-        $statusCode = $avCheck.productState
-        $statusHex = $statusCode.ToString("X6")
-        $dStatus = $statusHex.Substring(4, 2)
-        
-        $upToDate = if ($dStatus -eq "00") { $true } else { $false }
-        
-        if ($upToDate) {
-            Write-Host "Up to date" -ForegroundColor Green
-        }
-        else {
-            Write-Host "Out of date" -ForegroundColor Red
-        }
-    }
-    else {
-        Write-Host "Unknown" -ForegroundColor Yellow
-    }
-}
-catch {
-    Write-Host "Unknown" -ForegroundColor Yellow
-}
 
 # Function definitions
 function Write-Delayed {
@@ -241,16 +200,51 @@ try {
                 Select-Object DisplayName, DisplayVersion |
                 Sort-Object DisplayName
     
-    # Create a clean table without any headers
-    $format = "{0,-50} {1,-25}"
-    
-    # Print a divider line at the beginning
-    Write-Host ""
-    
-    # Skip the headers and separator lines - go straight to content
-    $Software | ForEach-Object {
-        Write-Host $($format -f $_.DisplayName, $_.DisplayVersion)
+    # Get Datto RMM status
+    $dattoInstalled = $Software | Where-Object { $_.DisplayName -like "*Datto*" -or $_.DisplayName -like "*CentraStage*" }
+    if ($dattoInstalled) {
+        Write-Host "Datto RMM Agent: " -NoNewline
+        Write-Host "INSTALLED" -ForegroundColor Green
+        foreach ($agent in $dattoInstalled) {
+            Write-Host "  $($agent.DisplayName) v$($agent.DisplayVersion)"
+        }
     }
+    else {
+        Write-Host "Datto RMM Agent: " -NoNewline
+        Write-Host "NOT INSTALLED" -ForegroundColor Red
+    }
+    
+    # Check Microsoft 365
+    $office365 = $Software | Where-Object { $_.DisplayName -like "*Microsoft 365*" -or $_.DisplayName -like "*Office 365*" }
+    if ($office365) {
+        Write-Host "Microsoft 365: " -NoNewline
+        Write-Host "INSTALLED" -ForegroundColor Green
+        foreach ($app in $office365) {
+            Write-Host "  $($app.DisplayName) v$($app.DisplayVersion)"
+        }
+    }
+    else {
+        Write-Host "Microsoft 365: " -NoNewline
+        Write-Host "NOT INSTALLED" -ForegroundColor Red
+    }
+    
+    # Check Adobe Reader
+    $adobeReader = $Software | Where-Object { $_.DisplayName -like "*Adobe*Reader*" -or $_.DisplayName -like "*Acrobat*Reader*" }
+    if ($adobeReader) {
+        Write-Host "Adobe Reader: " -NoNewline
+        Write-Host "INSTALLED" -ForegroundColor Green
+        foreach ($app in $adobeReader) {
+            Write-Host "  $($app.DisplayName) v$($app.DisplayVersion)"
+        }
+    }
+    else {
+        Write-Host "Adobe Reader: " -NoNewline
+        Write-Host "NOT INSTALLED" -ForegroundColor Red
+    }
+    
+    # Other notable software
+    Write-Host "`nOther Notable Software:" -ForegroundColor Cyan
+    $Software | Select-Object -First 15 | Format-Table -AutoSize
     
     if ($Software.Count -gt 15) {
         Write-Host "...and $($Software.Count - 15) more applications" -ForegroundColor Gray
@@ -434,7 +428,7 @@ Write-SectionHeader "Power Configuration"
 try {
     $powerCfg = powercfg /list
     $activePlan = ($powerCfg | Select-String -Pattern "\*").Line
-    Write-Host "Active Power Plan: " -NoNewline
+    Write-Host "Power Plan: " -NoNewline
     Write-Host $activePlan.Trim() -ForegroundColor Cyan
     
     # Check sleep settings
@@ -525,181 +519,5 @@ else {
 }
 
 Write-Host "`nReport generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
-
-# Rename machine functionality with GUI prompt
-Write-Delayed "Prompting for new machine rename..." -NewLine:$false
-try {
-    # Load required assemblies for GUI
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-
-    # Add P/Invoke declarations for setting window position and foreground
-    Add-Type -TypeDefinition @"
-        using System;
-        using System.Runtime.InteropServices;
-        
-        public class ForegroundWindow {
-            [DllImport("user32.dll")]
-            [return: MarshalAs(UnmanagedType.Bool)]
-            public static extern bool SetForegroundWindow(IntPtr hWnd);
-            
-            [DllImport("user32.dll")]
-            public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-            
-            [DllImport("user32.dll", SetLastError = true)]
-            public static extern bool BringWindowToTop(IntPtr hWnd);
-            
-            [DllImport("user32.dll")]
-            public static extern IntPtr GetForegroundWindow();
-            
-            [DllImport("user32.dll")]
-            public static extern bool FlashWindow(IntPtr hwnd, bool bInvert);
-
-            [DllImport("user32.dll")]
-            public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-            
-            public const int GWL_EXSTYLE = -20;
-            public const int WS_EX_TOPMOST = 0x0008;
-        }
-"@
-
-    # Create form
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Rename Machine"
-    $form.Size = New-Object System.Drawing.Size(400, 200)
-    $form.StartPosition = "CenterScreen"
-    $form.FormBorderStyle = "FixedDialog"
-    $form.MaximizeBox = $false
-    $form.MinimizeBox = $false
-    $form.TopMost = $true
-    
-    # Create label
-    $label = New-Object System.Windows.Forms.Label
-    $label.Location = New-Object System.Drawing.Point(10, 20)
-    $label.Size = New-Object System.Drawing.Size(380, 20)
-    $label.Text = "Enter new machine name (15 characters max, no spaces):"
-    $form.Controls.Add($label)
-
-    # Create textbox
-    $textBox = New-Object System.Windows.Forms.TextBox
-    $textBox.Location = New-Object System.Drawing.Point(10, 50)
-    $textBox.Size = New-Object System.Drawing.Size(360, 20)
-    $textBox.MaxLength = 15
-    $textBox.Text = $env:COMPUTERNAME
-    $form.Controls.Add($textBox)
-
-    # Create status label
-    $statusLabel = New-Object System.Windows.Forms.Label
-    $statusLabel.Location = New-Object System.Drawing.Point(10, 80)
-    $statusLabel.Size = New-Object System.Drawing.Size(380, 20)
-    $statusLabel.ForeColor = [System.Drawing.Color]::Red
-    $form.Controls.Add($statusLabel)
-
-    # Create OK button
-    $okButton = New-Object System.Windows.Forms.Button
-    $okButton.Location = New-Object System.Drawing.Point(75, 120)
-    $okButton.Size = New-Object System.Drawing.Size(100, 30)
-    $okButton.Text = "Rename"
-    $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $form.Controls.Add($okButton)
-    $form.AcceptButton = $okButton
-
-    # Create Cancel button
-    $cancelButton = New-Object System.Windows.Forms.Button
-    $cancelButton.Location = New-Object System.Drawing.Point(225, 120)
-    $cancelButton.Size = New-Object System.Drawing.Size(100, 30)
-    $cancelButton.Text = "Skip"
-    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $form.Controls.Add($cancelButton)
-    $form.CancelButton = $cancelButton
-
-    # Validate name when text changes
-    $textBox.Add_TextChanged({
-        $newName = $textBox.Text
-        if ($newName -match '\s') {
-            $statusLabel.Text = "Machine name cannot contain spaces"
-            $okButton.Enabled = $false
-        } elseif ($newName.Length -eq 0) {
-            $statusLabel.Text = "Machine name cannot be empty"
-            $okButton.Enabled = $false
-        } elseif ($newName -notmatch '^[a-zA-Z0-9\-]+$') {
-            $statusLabel.Text = "Only letters, numbers, and hyphens are allowed"
-            $okButton.Enabled = $false
-        } else {
-            $statusLabel.Text = ""
-            $okButton.Enabled = $true
-        }
-    })
-
-    # Additional form setup before showing
-    $form.Add_Shown({
-        # Set focus to the form
-        $form.Activate()
-        $form.Focus()
-        
-        # Delay to ensure other operations are complete
-        Start-Sleep -Milliseconds 100
-        
-        # These force the window to be on top and active
-        [ForegroundWindow]::BringWindowToTop($form.Handle)
-        [ForegroundWindow]::SetForegroundWindow($form.Handle)
-        [ForegroundWindow]::ShowWindow($form.Handle, 5) # SW_SHOW
-        
-        # Flash the window to get attention
-        [ForegroundWindow]::FlashWindow($form.Handle, $true)
-        
-        # Set window as topmost via the Windows API
-        [ForegroundWindow]::SetWindowLong($form.Handle, [ForegroundWindow]::GWL_EXSTYLE, 
-            [ForegroundWindow]::WS_EX_TOPMOST)
-    })
-
-    # Show the form
-    $result = $form.ShowDialog()
-
-    # If OK was clicked and the name is different
-    if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $textBox.Text -ne $env:COMPUTERNAME) {
-        $newName = $textBox.Text
-        
-        # Validate name
-        if ($newName -match '^[a-zA-Z0-9\-]{1,15}$') {
-            # Rename the machine
-            Rename-Computer -NewName $newName -Force
-            Write-Log "Machine renamed to: $newName (requires restart)"
-            
-            # Create a topmost message box for confirmation
-            $confirmBox = New-Object System.Windows.Forms.Form
-            $confirmBox.TopMost = $true
-            [System.Windows.Forms.MessageBox]::Show(
-                $confirmBox,
-                "Computer has been renamed to '$newName'. Changes will take effect after restart.",
-                "Rename Successful",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Information
-            )
-            Write-TaskComplete
-        } else {
-            Write-Log "Invalid Machine name entered: $newName"
-            
-            # Create a topmost message box for error
-            $errorBox = New-Object System.Windows.Forms.Form
-            $errorBox.TopMost = $true
-            [System.Windows.Forms.MessageBox]::Show(
-                $errorBox,
-                "Invalid Machine name. Rename skipped.", 
-                "Rename Failed", 
-                [System.Windows.Forms.MessageBoxButtons]::OK, 
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            )
-            Write-Host " skipped - invalid name." -ForegroundColor Yellow
-        }
-    } else {
-        Write-Log "Machine rename skipped by user"
-        Write-Host " skipped." -ForegroundColor Yellow
-    }
-} catch {
-    Write-Host " failed: $_" -ForegroundColor Red
-    Write-Log "Error in computer rename process: $_"
-}
-
 Read-Host -Prompt "Press enter to exit"
 Stop-Process -Id $PID -Force
