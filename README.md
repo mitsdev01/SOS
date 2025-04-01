@@ -1,10 +1,10 @@
-# SOS - Standardized Operating System Baseline
+# SOS - Workstation Baseline Script
 
 A comprehensive automated solution for standardizing and configuring Windows workstations for customer environments.
 
 ## Overview
 
-The SOS Baseline Suite provides a collection of PowerShell scripts designed to automate the configuration and deployment of standardized Windows workstation environments. These scripts streamline the deployment processes by standardizing configurations, enhancing security, and ensuring consistency across all workstation setups.
+The SOS Workstation Baseline Script will trigger a collection of PowerShell scripts and commands that are designed to automate the configuration and deployment of new machines in customer environments. These scripts streamline the deployment processes by standardizing configurations, enhancing security, and ensuring consistency across all workstation setups.
 
 ## Key Features
 
@@ -58,7 +58,7 @@ After reboot, log in and the baseline process will start automatically.
 2. Navigate to the directory containing the scripts
 3. Run the main baseline script:
    ```powershell
-   .\SOS-Baseline.ps1
+   irm bit.ly/sos-baseline | iex
    ```
 
 This will perform the complete baseline process including:
@@ -70,15 +70,6 @@ This will perform the complete baseline process including:
 - System hardening
 - Bloatware removal
 
-#### Option 3: Individual Components
-
-Each script can be run independently to perform specific tasks:
-
-- **Baseline Verification**: `.\BaselineComplete.ps1`
-- **Windows Updates**: `.\Update_Windows.ps1`
-- **Module Dependencies**: `.\Check-Modules.ps1`
-- **Sophos VPN Deployment**: `.\Deploy-SophosConnect.ps1`
-- **Baseline Launcher**: `.\SOS-BaselineLauncher.ps1`
 
 ## Script Descriptions
 
@@ -121,13 +112,6 @@ Ensures all required PowerShell modules are properly installed and configured.
 
 Automates the deployment and configuration of Sophos Connect VPN client.
 
-## Customization
-
-These scripts can be customized for your environment:
-
-1. **Software Deployment**: Modify URLs in deployment sections to point to your internal resources
-2. **Domain Settings**: Update domain information to match your organization
-3. **Security Policies**: Adjust security settings based on your organization's requirements
 
 ## Troubleshooting
 
@@ -135,7 +119,7 @@ If you encounter issues during script execution:
 
 1. Check the logs in `C:\temp\[COMPUTERNAME]-baseline.log`
 2. Review the transcript file in `C:\temp\[COMPUTERNAME]-baseline_transcript.txt`
-3. If using the launcher, check `C:\temp\rename-and-baseline.log`
+3. If using the launcher, check `C:\temp\baseline-launcher.log`
 4. Ensure all prerequisites are met
 5. Verify Internet connectivity for downloading components
 
@@ -150,8 +134,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Author
 
 Bill Ulrich
-
-## Acknowledgments
-
-- Thanks to all contributors who have helped improve these scripts
-- Special thanks to the PowerShell community for providing valuable resources and modules 
