@@ -184,10 +184,11 @@ function Write-TaskComplete {
     # Log to file
     Write-Log "Task completed successfully"
     
-    # Write to transcript - single clean entry
-    Write-Host "Task completed successfully" -ForegroundColor Green
+    # Write to transcript - single clean entry with just " done."
+    Write-Host " done." -ForegroundColor Green
     
-    # Visual formatting only for console display
+    # Visual formatting only for console display - this is now redundant with transcript
+    # but keeping to maintain consistent visual appearance with previous versions
     [Console]::ForegroundColor = [System.ConsoleColor]::Green
     [Console]::Write(" done.")
     [Console]::ResetColor()
@@ -199,9 +200,10 @@ function Write-TaskFailed {
     Write-Log "Task failed"
     
     # Write to transcript - single clean entry
-    Write-Host "Task failed" -ForegroundColor Red
+    Write-Host " failed." -ForegroundColor Red
     
-    # Visual formatting only for console display
+    # Visual formatting only for console display - this is now redundant with transcript
+    # but keeping to maintain consistent visual appearance with previous versions
     [Console]::ForegroundColor = [System.ConsoleColor]::Red
     [Console]::Write(" failed.")
     [Console]::ResetColor()
@@ -490,7 +492,7 @@ Start-Sleep -Seconds 2
 # Start baseline
 
 # Baseline log file
-Write-Log "Automated workstation baseline has started"
+#Write-Log "Automated workstation baseline has started"
 
 # Check for required modules
 Write-Host "Checking for required modules..." -NoNewline
@@ -528,8 +530,8 @@ try {
     [Console]::WriteLine()
     
     # Write to transcript
-    Write-Host "Module check completed successfully" -ForegroundColor Green
-    Write-Log "Module check completed successfully"
+    #Write-Host "Module check completed successfully" -ForegroundColor Green
+    #Write-Log "Module check completed successfully"
 }
 catch {
     # Handle errors
