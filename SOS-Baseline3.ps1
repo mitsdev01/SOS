@@ -114,7 +114,7 @@ $header = @"
 $headerBorder
                         SOS WORKSTATION BASELINE LOG
                              Version $ScriptVersion
-                      $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+                         $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 $headerBorder
 
 Computer: $env:COMPUTERNAME
@@ -2055,7 +2055,7 @@ Write-Log "Automated workstation baseline has completed successfully"
 $footerBorder = "=" * 80
 $footer = @"
 $footerBorder
-                     SCRIPT EXECUTION COMPLETED SUCCESSFULLY
+                Baseline Configuration Completed Successfully
                       $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 $footerBorder
 "@
