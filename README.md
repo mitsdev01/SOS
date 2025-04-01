@@ -19,7 +19,7 @@ The SOS Baseline Suite provides a collection of PowerShell scripts designed to a
 
 ### Prerequisites
 
-- Windows 10/11 Professional or Enterprise
+- Windows 10/11 Professional
 - PowerShell 5.1 or higher
 - Administrator privileges
 - Internet connectivity
