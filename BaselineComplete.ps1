@@ -1,6 +1,47 @@
+############################################################################################################
+#                                     SOS - Workstation Baseline Verification                               #
+#                                                 Version 1.0.1                                             #
+############################################################################################################
+#region Synopsis
+<#
+.SYNOPSIS
+    Verifies and displays the configuration status of a workstation after baseline setup.
+
+.DESCRIPTION
+    This script provides a comprehensive verification report for Windows workstations, including:
+    - System information (OS, uptime, installation date)
+    - Installed software inventory
+    - BitLocker encryption status and recovery keys
+    - Domain/Azure AD join status
+    - Security status (antivirus, Windows Update)
+    - Power configuration
+    - Overall baseline compliance score
+
+    It displays detailed information with color-coded status indicators for quick assessment.
+
+.PARAMETER None
+    This script does not accept parameters.
+
+.NOTES
+    Version:        1.0.9
+    Author:         Bill Ulrich
+    Creation Date:  2024
+    Requires:       Administrator privileges
+                    Windows 10/11 Professional or Enterprise
+                    CommonStuff PowerShell module
+    
+.EXAMPLE
+    .\BaselineComplete.ps1
+    
+    Run the script with administrator privileges to generate a comprehensive baseline verification report.
+
+.LINK
+    https://github.com/mitsdev01/SOS
+#>
+
 Clear-Host
 
-$ScriptVersion = "1.0.1"
+$ScriptVersion = "1.0.9"
 
 # Add Print-Middle function from SOS-Baseline3.ps1
 function Print-Middle($Message, $Color = "White") {

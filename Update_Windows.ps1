@@ -1,4 +1,45 @@
-cls
+############################################################################################################
+#                                     SOS - Windows Update Automation                                        #
+#                                                 Version 1.0.1                                             #
+############################################################################################################
+#region Synopsis
+<#
+.SYNOPSIS
+    Automates the installation of Windows updates using the PSWindowsUpdate module.
+
+.DESCRIPTION
+    This script provides a streamlined way to check for and install Windows updates, including:
+    - Automatic installation of required package providers (NuGet)
+    - Installation and import of the PSWindowsUpdate module if not present
+    - Detection of available Microsoft updates
+    - Batch installation of all available updates
+    - Detailed status reporting with color-coded output
+    - Error handling for update operations
+
+    The script is designed to be run with minimal user intervention and provides clear feedback
+    during the update process.
+
+.PARAMETER None
+    This script does not accept parameters.
+
+.NOTES
+    Version:        1.0.1
+    Author:         Bill Ulrich
+    Creation Date:  2024
+    Requires:       Administrator privileges
+                    Internet connectivity
+                    PowerShell 5.1+
+    
+.EXAMPLE
+    .\Update_Windows.ps1
+    
+    Run the script with administrator privileges to automatically check for and install Windows updates.
+
+.LINK
+    https://github.com/mitsdev01/SOS
+#>
+
+Clear-Host
 
 # Check if NuGet provider is installed
 if (!(Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
