@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.5.5                                            #
+#                                                 Version 1.5.6                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.5.5
+    Version:        1.5.6
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.5.5"
+$ScriptVersion = "1.5.6"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -505,7 +505,7 @@ Start-Sleep -Seconds 2
 #Write-Log "Automated workstation baseline has started"
 
 # Check for required modules
-Write-Host "Checking for required modules..." -NoNewline
+Write-Host "`nChecking for required modules..." -NoNewline
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
@@ -638,7 +638,7 @@ $installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/ce8a0
 # Check for existing Datto RMM agent
 $installStatus = Test-DattoInstallation
 if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
-    #Write-Host "Datto RMM agent is already installed and running." -ForegroundColor Green
+    Write-Host "Datto RMM agent is already installed and running." -ForegroundColor Cyan
     Write-Log "Datto RMM agent already installed and running"
 } else {
     # Clean up any partial installations
@@ -776,30 +776,30 @@ if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
 # ---------------------------------------------------------------------
 # Configure Local Admin Account
 # ---------------------------------------------------------------------
-# Check if the user 'sosadmin' exists
-$user = Get-LocalUser -Name 'sosadmin' -ErrorAction SilentlyContinue
+# Check if the user 'sossetup' exists
+$user = Get-LocalUser -Name 'sossetup' -ErrorAction SilentlyContinue
 
 if ($user) {
     # Check if the password is set to 'Never Expire'
     if (-not $user.PasswordNeverExpires) {
-        Write-Delayed "Setting sosadmin password to 'Never Expire'..." -NewLine:$false
+        Write-Delayed "Setting sossetup password to 'Never Expire'..." -NewLine:$false
         $user | Set-LocalUser -PasswordNeverExpires $true
         Write-TaskComplete
-        Write-Log "Set sosadmin password to never expire"
+        Write-Log "Set sossetup password to never expire"
     }
 } else {
-    Write-Host "Creating local sosadmin & setting password to 'Never Expire'..." -NoNewline
+    Write-Host "Creating local sossetup & setting password to 'Never Expire'..." -NoNewline
     $Password = ConvertTo-SecureString "ChangeMe!" -AsPlainText -Force
-    New-LocalUser "sosadmin" -Password $Password -FullName "SOSS Admin" -Description "SOSADMIN Account" *> $null
-    $newUser = Get-LocalUser -Name 'sosadmin' -ErrorAction SilentlyContinue
+    New-LocalUser "sossetup" -Password $Password -FullName "SOSS Admin" -Description "sossetup Account" *> $null
+    $newUser = Get-LocalUser -Name 'sossetup' -ErrorAction SilentlyContinue
     if ($newUser) {
         $newUser | Set-LocalUser -PasswordNeverExpires $true
-        Add-LocalGroupMember -Group "Administrators" -Member "sosadmin"
+        Add-LocalGroupMember -Group "Administrators" -Member "sossetup"
         Write-TaskComplete
-        Write-Log "Created sosadmin local admin account with non-expiring password"
+        Write-Log "Created sossetup local admin account with non-expiring password"
     } else {
         Write-TaskFailed
-        Write-Log "Failed to create sosadmin account"
+        Write-Log "Failed to create sossetup account"
     }
 }
 #endregion LocalAdminAccount
@@ -1982,58 +1982,6 @@ try {
     Write-Host " failed: $_" -ForegroundColor Red
     Write-Log "Error in computer rename process: $_"
 }
-
-<# Create a restore point
-Write-Delayed "Creating a system restore point..." -NewLine:$false
-
-# Initialize spinner
-$spinner = @('/', '-', '\', '|')
-$spinnerIndex = 0
-[Console]::Write($spinner[$spinnerIndex])
-
-try {
-    # Run the system restore point creation in a background job to allow for spinner animation
-    $job = Start-Job -ScriptBlock {
-        Checkpoint-Computer -Description "SOS Baseline Completed" -RestorePointType "APPLICATION_INSTALL" -ErrorAction Stop
-        return $true
-    }
-    
-    # Show spinner whilne waiting for the job to complete
-    while ($job.State -eq 'Running') {
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        [Console]::Write($spinner[$spinnerIndex])
-        Start-Sleep -Milliseconds 250
-    }
-    
-    # Get the result of the job
-    $result = Receive-Job -Job $job
-    Remove-Job -Job $job -Force
-    
-    if ($result -eq $true) {
-        # Replace spinner with done message
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write(" done.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        
-        Write-Log "System restore point created successfully"
-    } else {
-        throw "Failed to create system restore point"
-    }
-} catch {
-    # Replace spinner with failed message
-    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" failed.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    
-    Write-Host "An error occurred: $_" -ForegroundColor Red
-    Write-Log "Error creating system restore point: $_"
-}
-#>
 
 
 # Create a restore point
