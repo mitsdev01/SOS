@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.5.5                                            #
+#                                                 Version 1.5.6                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.5.5
+    Version:        1.5.6
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.5.5"
+$ScriptVersion = "1.5.6"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -776,30 +776,30 @@ if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
 # ---------------------------------------------------------------------
 # Configure Local Admin Account
 # ---------------------------------------------------------------------
-# Check if the user 'sosadmin' exists
-$user = Get-LocalUser -Name 'sosadmin' -ErrorAction SilentlyContinue
+# Check if the user 'sossetup' exists
+$user = Get-LocalUser -Name 'sossetup' -ErrorAction SilentlyContinue
 
 if ($user) {
     # Check if the password is set to 'Never Expire'
     if (-not $user.PasswordNeverExpires) {
-        Write-Delayed "Setting sosadmin password to 'Never Expire'..." -NewLine:$false
+        Write-Delayed "Setting sossetup password to 'Never Expire'..." -NewLine:$false
         $user | Set-LocalUser -PasswordNeverExpires $true
         Write-TaskComplete
-        Write-Log "Set sosadmin password to never expire"
+        Write-Log "Set sossetup password to never expire"
     }
 } else {
-    Write-Host "Creating local sosadmin & setting password to 'Never Expire'..." -NoNewline
+    Write-Host "Creating local sossetup & setting password to 'Never Expire'..." -NoNewline
     $Password = ConvertTo-SecureString "ChangeMe!" -AsPlainText -Force
-    New-LocalUser "sosadmin" -Password $Password -FullName "SOSS Admin" -Description "SOSADMIN Account" *> $null
-    $newUser = Get-LocalUser -Name 'sosadmin' -ErrorAction SilentlyContinue
+    New-LocalUser "sossetup" -Password $Password -FullName "SOSS Admin" -Description "sossetup Account" *> $null
+    $newUser = Get-LocalUser -Name 'sossetup' -ErrorAction SilentlyContinue
     if ($newUser) {
         $newUser | Set-LocalUser -PasswordNeverExpires $true
-        Add-LocalGroupMember -Group "Administrators" -Member "sosadmin"
+        Add-LocalGroupMember -Group "Administrators" -Member "sossetup"
         Write-TaskComplete
-        Write-Log "Created sosadmin local admin account with non-expiring password"
+        Write-Log "Created sossetup local admin account with non-expiring password"
     } else {
         Write-TaskFailed
-        Write-Log "Failed to create sosadmin account"
+        Write-Log "Failed to create sossetup account"
     }
 }
 #endregion LocalAdminAccount
