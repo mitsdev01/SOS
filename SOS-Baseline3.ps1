@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.5.4c"
+$ScriptVersion = "1.5.4d"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -184,14 +184,12 @@ function Write-TaskComplete {
     # Log to file
     Write-Log "Task completed successfully"
     
-    # Write to transcript - single clean entry with just " done."
+    # Write to both transcript and console with single call
+    # This replaces the separate Write-Host and [Console]::Write calls
     Write-Host " done." -ForegroundColor Green
     
-    # Visual formatting only for console display - this is now redundant with transcript
-    # but keeping to maintain consistent visual appearance with previous versions
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
+    # Visual formatting for console only needs a newline since Write-Host 
+    # already output the colored text
     [Console]::WriteLine()
 }
 
@@ -199,14 +197,12 @@ function Write-TaskFailed {
     # Log to file
     Write-Log "Task failed"
     
-    # Write to transcript - single clean entry
+    # Write to both transcript and console with single call
+    # This replaces the separate Write-Host and [Console]::Write calls
     Write-Host " failed." -ForegroundColor Red
     
-    # Visual formatting only for console display - this is now redundant with transcript
-    # but keeping to maintain consistent visual appearance with previous versions
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" failed.")
-    [Console]::ResetColor()
+    # Visual formatting for console only needs a newline since Write-Host 
+    # already output the colored text
     [Console]::WriteLine()
 }
 
@@ -620,7 +616,7 @@ while ($true) {
 # Agent Installation Configuration
 $TempFolder = "c:\temp"
 $file = "$TempFolder\AgentInstall.exe"
-$LogFile = "c:\temp\DRMM-Install.log"
+
 $agentName = "CagService"
 $agentPath = "C:\Program Files (x86)\CentraStage"
 $installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/ce8a0a8d-84bd-4baa-850a-6f46e9c37dfc"
@@ -858,21 +854,13 @@ Start-Sleep -Milliseconds 100
 # Check both operations succeeded
 $service = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
 if ($stopSuccess -and $disableSuccess -and $service.Status -eq 'Stopped') {
-    # Replace spinner with done message
-    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" done.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
+    # Use Write-Host for both transcript and console display
+    Write-Host " done." -ForegroundColor Green
     
     Write-Log "Windows Update service suspended successfully"
 } else {
-    # Replace spinner with failed message
-    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" failed.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
+    # Use Write-Host for both transcript and console display
+    Write-Host " failed." -ForegroundColor Red
     
     Write-Log "Failed to suspend Windows Update service completely"
 }
@@ -1099,10 +1087,8 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
         
         # Replace spinner with done message
         [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write(" done.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
+        # Use Write-Host instead of Console method to ensure proper transcript logging
+        Write-Host " done." -ForegroundColor Green
         
         if ($BitLockerVolume.KeyProtector) {
             # Get recovery information
@@ -1394,10 +1380,8 @@ foreach ($task in $taskList) {
 
 # Replace spinner with done message
 [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-[Console]::ForegroundColor = [System.ConsoleColor]::Green
-[Console]::Write(" done.")
-[Console]::ResetColor()
-[Console]::WriteLine()
+# Use Write-Host instead of Console methods
+Write-Host " done." -ForegroundColor Green
 
 Write-Log "Disabled unnecessary scheduled tasks"
 #endregion Profile Customization
@@ -1467,12 +1451,7 @@ if ($O365) {
 ############################################################################################################
 #region Acrobat Install
 
-# Initialize log file if not already defined
-if (-not (Get-Variable -Name LogFile -ErrorAction SilentlyContinue)) {
-    $LogFile = "$env:TEMP\AcrobatInstallation.log"
-}
-
-# Define the URL and file path for the Acrobat Reader installer
+# URL and file path for the Acrobat Reader installer
 $URL = "https://axcientrestore.blob.core.windows.net/win11/AcroRdrDC2500120432_en_US.exe"
 $AcroFilePath = "C:\temp\AcroRdrDC2500120432_en_US.exe"
 
@@ -1737,16 +1716,14 @@ Start-Service -Name wuauserv
 Start-Sleep -Seconds 5
 $service = Get-Service -Name wuauserv
 if ($service.Status -eq 'Running') {
-    # Write to transcript
-    # Write-Host " done." -ForegroundColor Green
-    # Visual formatting
-    Write-Host -ForegroundColor Green " done."
+    # Use a single Write-Host for both transcript and console display
+    Write-Host " done." -ForegroundColor Green
+    
     Write-Log "Windows Update Service enabled and started successfully."
 } else {
-    # Write to transcript
+    # Use a single Write-Host for both transcript and console display
     Write-Host " failed." -ForegroundColor Red
-    # Visual formatting
-    Write-Host -ForegroundColor Red " failed."
+    
     Write-Log "Windows Update Service failed to enable and start."
 }
 
@@ -1782,20 +1759,16 @@ if (Test-Path "c:\temp\update_windows.ps1") {
     Move-ProcessWindowToTopRight -processName "Windows PowerShell" | Out-Null
     Start-Sleep -Seconds 1
     
-    # Write to transcript
-    #Write-Host " done." -ForegroundColor Green
-    # Visual formatting
-    Write-Host -ForegroundColor Green " done."
+    # Use a single Write-Host for both transcript and console display
+    Write-Host " done." -ForegroundColor Green
+    
     Write-Log "All available Windows updates are installed."
      
 } else {
-    # Write to transcript
+    # Use a single Write-Host for both transcript and console display
     Write-Host "Windows Update execution failed!" -ForegroundColor Red
-    # Visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    Write-Delayed "Windows Update execution failed!" -NewLine:$false
-    [Console]::ResetColor()
-    [Console]::WriteLine()  
+    
+    Write-Log "Windows Update execution failed!"
 }
 
 # Create WakeLock exit flag to stop the WakeLock script
