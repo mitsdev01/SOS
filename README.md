@@ -52,6 +52,8 @@ irm bit.ly/sos-baseline-launcher | iex
 
 After reboot, log in and the baseline process will start automatically.
 
+> **Note**: The launcher creates a tracker file (`C:\temp\sos-rename-complete.flag`) to prevent duplicate machine rename prompts. If you launch the baseline via the launcher, you won't be prompted to rename the machine again at the end of the baseline process.
+
 #### Option 2: Full Baseline Setup (Manual)
 
 1. Open PowerShell as Administrator
@@ -78,6 +80,7 @@ This will perform the complete baseline process including:
 A streamlined launcher script that handles the initial setup:
 - Presents a user-friendly interface to rename the computer
 - Creates a scheduled task to run the baseline script after reboot
+- Creates a tracker file to prevent duplicate rename prompts
 - Automatically restarts the system
 - After restart, the scheduled task runs once and self-deletes
 

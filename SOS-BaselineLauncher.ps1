@@ -143,6 +143,11 @@ $startupScriptPath = "$tempFolder\SOS-Baseline-Startup.ps1"
 Set-Content -Path $startupScriptPath -Value $startupScript -Force
 Write-Log "Created startup script at $startupScriptPath"
 
+# Create tracker file to indicate rename was already attempted
+$trackerFilePath = "$tempFolder\sos-rename-complete.flag"
+New-Item -Path $trackerFilePath -ItemType File -Force | Out-Null
+Write-Log "Created rename tracker file at $trackerFilePath"
+
 # Rename machine functionality with GUI prompt
 Write-Delayed "Prompting for new machine rename..." -NewLine:$false
 try {
