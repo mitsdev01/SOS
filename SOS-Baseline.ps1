@@ -45,7 +45,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.5.7"
+$ScriptVersion = "1.5.7b"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -165,32 +165,33 @@ function Write-Delayed {
     # Add to log file
     Write-Log "$Text"
     
-    # Write to transcript in one go (not character by character)
+    # Write to transcript only once using Write-Host
+    # This is what will appear in the transcript file
     Write-Host $Text -NoNewline -ForegroundColor $Color
-    if ($NewLine) {
-        Write-Host ""
-    }
     
-    # Clear the line where we just wrote to avoid duplication in console
-    $originalColor = [Console]::ForegroundColor
-    [Console]::ForegroundColor = $Color
-    [Console]::SetCursorPosition(0, [Console]::CursorTop)
-    [Console]::Write("".PadRight([Console]::BufferWidth - 1))  # Clear the line
-    [Console]::SetCursorPosition(0, [Console]::CursorTop)
-    
-    # Now do the visual character-by-character animation for the console only
-    foreach ($char in $Text.ToCharArray()) {
-        [Console]::Write($char)
+    # Now do the character-by-character animation for the console
+    # This uses [Console] which doesn't affect transcript content
+    $chars = $Text.ToCharArray()
+    foreach ($char in $chars) {
+        # Erase the current line to avoid duplication in console
+        [Console]::SetCursorPosition(0, [Console]::CursorTop)
+        [Console]::Write("".PadRight([Console]::BufferWidth - 1))
+        [Console]::SetCursorPosition(0, [Console]::CursorTop)
+        
+        # Rewrite the entire text up to this character
+        $idx = [Array]::IndexOf($chars, $char)
+        $partialText = $Text.Substring(0, $idx + 1)
+        [Console]::ForegroundColor = $Color
+        [Console]::Write($partialText)
+        
         Start-Sleep -Milliseconds 25
     }
     
-    # Add newline if requested
+    # Add newline if requested (both in transcript and console)
     if ($NewLine) {
-        [Console]::WriteLine()
+        Write-Host ""
+        # No need for Console.WriteLine as the Write-Host above handles it
     }
-    
-    # Restore original color
-    [Console]::ForegroundColor = $originalColor
 }
 
 function Write-Log {
