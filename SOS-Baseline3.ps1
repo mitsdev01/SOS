@@ -869,11 +869,17 @@ Start-Sleep -Milliseconds 100
 # Check both operations succeeded
 $service = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
 if ($stopSuccess -and $disableSuccess -and $service.Status -eq 'Stopped') {
+    # Clear the spinner character by moving cursor position back
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    
     # Use Write-Host for both transcript and console display
     Write-Host " done." -ForegroundColor Green
     
     Write-Log "Windows Update service suspended successfully"
 } else {
+    # Clear the spinner character by moving cursor position back
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    
     # Use Write-Host for both transcript and console display
     Write-Host " failed." -ForegroundColor Red
     
