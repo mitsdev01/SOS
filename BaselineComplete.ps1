@@ -533,6 +533,36 @@ try {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
+    # Add P/Invoke declarations for setting window position and foreground
+    Add-Type -TypeDefinition @"
+        using System;
+        using System.Runtime.InteropServices;
+        
+        public class ForegroundWindow {
+            [DllImport("user32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool SetForegroundWindow(IntPtr hWnd);
+            
+            [DllImport("user32.dll")]
+            public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+            
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool BringWindowToTop(IntPtr hWnd);
+            
+            [DllImport("user32.dll")]
+            public static extern IntPtr GetForegroundWindow();
+            
+            [DllImport("user32.dll")]
+            public static extern bool FlashWindow(IntPtr hwnd, bool bInvert);
+
+            [DllImport("user32.dll")]
+            public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+            
+            public const int GWL_EXSTYLE = -20;
+            public const int WS_EX_TOPMOST = 0x0008;
+        }
+"@
+
     # Create form
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Rename Machine"
@@ -542,8 +572,7 @@ try {
     $form.MaximizeBox = $false
     $form.MinimizeBox = $false
     $form.TopMost = $true
-    $form.BringToFront()
-
+    
     # Create label
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(10, 20)
@@ -602,6 +631,28 @@ try {
         }
     })
 
+    # Additional form setup before showing
+    $form.Add_Shown({
+        # Set focus to the form
+        $form.Activate()
+        $form.Focus()
+        
+        # Delay to ensure other operations are complete
+        Start-Sleep -Milliseconds 100
+        
+        # These force the window to be on top and active
+        [ForegroundWindow]::BringWindowToTop($form.Handle)
+        [ForegroundWindow]::SetForegroundWindow($form.Handle)
+        [ForegroundWindow]::ShowWindow($form.Handle, 5) # SW_SHOW
+        
+        # Flash the window to get attention
+        [ForegroundWindow]::FlashWindow($form.Handle, $true)
+        
+        # Set window as topmost via the Windows API
+        [ForegroundWindow]::SetWindowLong($form.Handle, [ForegroundWindow]::GWL_EXSTYLE, 
+            [ForegroundWindow]::WS_EX_TOPMOST)
+    })
+
     # Show the form
     $result = $form.ShowDialog()
 
@@ -614,11 +665,31 @@ try {
             # Rename the machine
             Rename-Computer -NewName $newName -Force
             Write-Log "Machine renamed to: $newName (requires restart)"
-            [System.Windows.Forms.MessageBox]::Show("Computer has been renamed to '$newName'. Changes will take effect after restart.", "Rename Successful", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            
+            # Create a topmost message box for confirmation
+            $confirmBox = New-Object System.Windows.Forms.Form
+            $confirmBox.TopMost = $true
+            [System.Windows.Forms.MessageBox]::Show(
+                $confirmBox,
+                "Computer has been renamed to '$newName'. Changes will take effect after restart.",
+                "Rename Successful",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
             Write-TaskComplete
         } else {
             Write-Log "Invalid Machine name entered: $newName"
-            [System.Windows.Forms.MessageBox]::Show("Invalid Machine name. Rename skipped.", "Rename Failed", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+            
+            # Create a topmost message box for error
+            $errorBox = New-Object System.Windows.Forms.Form
+            $errorBox.TopMost = $true
+            [System.Windows.Forms.MessageBox]::Show(
+                $errorBox,
+                "Invalid Machine name. Rename skipped.", 
+                "Rename Failed", 
+                [System.Windows.Forms.MessageBoxButtons]::OK, 
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            )
             Write-Host " skipped - invalid name." -ForegroundColor Yellow
         }
     } else {
