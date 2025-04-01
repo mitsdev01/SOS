@@ -144,17 +144,23 @@ function Write-Delayed {
         [System.ConsoleColor]$Color = [System.ConsoleColor]::White
     )
     
-    # Add to log file directly (not affected by transcript)
+    # Add to log file
     Write-Log "UI: $Text"
     
-    # Skip writing to transcript - the console output will be captured anyway
-    # This prevents duplicate output in transcript
+    # Write to transcript in one go (not character by character)
+    Write-Host $Text -NoNewline -ForegroundColor $Color
+    if ($NewLine) {
+        Write-Host ""
+    }
     
-    # For visual display, we'll use Console methods to show typing animation
+    # Clear the line where we just wrote to avoid duplication in console
     $originalColor = [Console]::ForegroundColor
     [Console]::ForegroundColor = $Color
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
+    [Console]::Write("".PadRight([Console]::BufferWidth - 1))  # Clear the line
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
     
-    # Type each character with a delay
+    # Now do the visual character-by-character animation for the console only
     foreach ($char in $Text.ToCharArray()) {
         [Console]::Write($char)
         Start-Sleep -Milliseconds 25
@@ -163,9 +169,6 @@ function Write-Delayed {
     # Add newline if requested
     if ($NewLine) {
         [Console]::WriteLine()
-    } else {
-        # If no newline, make sure to position cursor correctly
-        [Console]::Write("")
     }
     
     # Restore original color
@@ -178,10 +181,13 @@ function Write-Log {
 }
 
 function Write-TaskComplete {
-    # Only log to file - avoid writing to transcript
+    # Log to file
     Write-Log "Task completed successfully"
     
-    # Visual formatting only - this will be captured in transcript
+    # Write to transcript - single clean entry
+    Write-Host "Task completed successfully" -ForegroundColor Green
+    
+    # Visual formatting only for console display
     [Console]::ForegroundColor = [System.ConsoleColor]::Green
     [Console]::Write(" done.")
     [Console]::ResetColor()
@@ -189,10 +195,13 @@ function Write-TaskComplete {
 }
 
 function Write-TaskFailed {
-    # Only log to file - avoid writing to transcript
+    # Log to file
     Write-Log "Task failed"
     
-    # Visual formatting only - this will be captured in transcript
+    # Write to transcript - single clean entry
+    Write-Host "Task failed" -ForegroundColor Red
+    
+    # Visual formatting only for console display
     [Console]::ForegroundColor = [System.ConsoleColor]::Red
     [Console]::Write(" failed.")
     [Console]::ResetColor()
@@ -417,6 +426,19 @@ function Show-SpinnerAnimation {
     }
 }
 
+function Show-Spinner {
+    param (
+        [int]$SpinnerIndex,
+        [string[]]$SpinnerChars = @('/', '-', '\', '|'),
+        [int]$CursorLeft,
+        [int]$CursorTop
+    )
+    
+    # Use only Console methods to avoid writing to transcript
+    [Console]::SetCursorPosition($CursorLeft, $CursorTop)
+    [Console]::Write($SpinnerChars[$SpinnerIndex % $SpinnerChars.Length])
+}
+
 #endregion Functions
 
 # Start transcript logging with better handling
@@ -485,8 +507,7 @@ try {
     
     # Display the spinner while the job is running
     while ($job.State -eq 'Running') {
-        [Console]::SetCursorPosition($originalCursorLeft, $originalCursorTop)
-        [Console]::Write($spinner[$spinnerIndex])
+        Show-Spinner -SpinnerIndex $spinnerIndex -CursorLeft $originalCursorLeft -CursorTop $originalCursorTop
         Start-Sleep -Milliseconds 100
         $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
     }
@@ -506,8 +527,8 @@ try {
     [Console]::ResetColor()
     [Console]::WriteLine()
     
-    # Ensure completion is written to transcript
-    #Write-Host "Module check completed successfully" -ForegroundColor Green
+    # Write to transcript
+    Write-Host "Module check completed successfully" -ForegroundColor Green
     Write-Log "Module check completed successfully"
 }
 catch {
@@ -530,7 +551,6 @@ catch {
     
     # Ensure error is written to transcript
     Write-Host "Module check failed: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
     Write-Log "Module check failed: $($_.Exception.Message)"
 }
 
