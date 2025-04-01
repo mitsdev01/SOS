@@ -38,7 +38,21 @@ The SOS Baseline Suite provides a collection of PowerShell scripts designed to a
 
 ### Basic Usage
 
-#### Option 1: Full Baseline Setup (Recommended for New Deployments)
+#### Option 1: Quick Start with Launcher (Recommended)
+
+The simplest way to get started is to use the one-liner command that:
+1. Prompts you to rename the machine
+2. Schedules the baseline script to run automatically after reboot
+3. Initiates a system restart
+
+Simply run this command in an elevated PowerShell window:
+```powershell
+irm bit.ly/sos-baseline-launcher | iex
+```
+
+After reboot, log in and the baseline process will start automatically.
+
+#### Option 2: Full Baseline Setup (Manual)
 
 1. Open PowerShell as Administrator
 2. Navigate to the directory containing the scripts
@@ -56,7 +70,7 @@ This will perform the complete baseline process including:
 - System hardening
 - Bloatware removal
 
-#### Option 2: Individual Components
+#### Option 3: Individual Components
 
 Each script can be run independently to perform specific tasks:
 
@@ -64,12 +78,25 @@ Each script can be run independently to perform specific tasks:
 - **Windows Updates**: `.\Update_Windows.ps1`
 - **Module Dependencies**: `.\Check-Modules.ps1`
 - **Sophos VPN Deployment**: `.\Deploy-SophosConnect.ps1`
+- **Baseline Launcher**: `.\SOS-BaselineLauncher.ps1`
 
 ## Script Descriptions
+
+### SOS-BaselineLauncher.ps1
+
+A streamlined launcher script that handles the initial setup:
+- Presents a user-friendly interface to rename the computer
+- Creates a scheduled task to run the baseline script after reboot
+- Automatically restarts the system
+- After restart, the scheduled task runs once and self-deletes
+
+Access it via the one-liner: `irm bit.ly/sos-baseline-launcher | iex`
 
 ### SOS-Baseline.ps1 (Main Script)
 
 The primary script that performs all baseline operations. It includes comprehensive workstation configuration and ensures systems are properly secured and optimized.
+
+Access it directly via: `irm bit.ly/sos-baseline | iex`
 
 ### BaselineComplete.ps1
 
@@ -108,8 +135,9 @@ If you encounter issues during script execution:
 
 1. Check the logs in `C:\temp\[COMPUTERNAME]-baseline.log`
 2. Review the transcript file in `C:\temp\[COMPUTERNAME]-baseline_transcript.txt`
-3. Ensure all prerequisites are met
-4. Verify Internet connectivity for downloading components
+3. If using the launcher, check `C:\temp\rename-and-baseline.log`
+4. Ensure all prerequisites are met
+5. Verify Internet connectivity for downloading components
 
 ## Contributing
 
