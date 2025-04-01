@@ -67,16 +67,34 @@ function Write-Delayed {
         [switch]$NewLine = $true,
         [System.ConsoleColor]$Color = [System.ConsoleColor]::White
     )
-    $currentColor = [Console]::ForegroundColor
-    [Console]::ForegroundColor = $Color
-    foreach ($Char in $Text.ToCharArray()) {
-        [Console]::Write("$Char")
+    
+    # Log to file
+    Write-Log "$Text"
+    
+    # Write to transcript once with Write-Host (no animation)
+    Write-Host $Text -NoNewline -ForegroundColor $Color
+    
+    # Animate in console only (doesn't affect transcript)
+    $chars = $Text.ToCharArray()
+    foreach ($char in $chars) {
+        # Clear current line
+        [Console]::SetCursorPosition(0, [Console]::CursorTop)
+        [Console]::Write("".PadRight([Console]::BufferWidth - 1))
+        [Console]::SetCursorPosition(0, [Console]::CursorTop)
+        
+        # Rewrite progressively
+        $idx = [Array]::IndexOf($chars, $char)
+        $partialText = $Text.Substring(0, $idx + 1)
+        [Console]::ForegroundColor = $Color
+        [Console]::Write($partialText)
+        
         Start-Sleep -Milliseconds 25
     }
+    
+    # Add newline if requested
     if ($NewLine) {
-        [Console]::WriteLine()
+        Write-Host ""
     }
-    [Console]::ForegroundColor = $currentColor
 }
 
 function Write-TaskComplete {
