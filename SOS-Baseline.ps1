@@ -2071,7 +2071,7 @@ Write-Host " "
 #endregion Summary
 
 # Stopping transcript
-Stop-Transcript
+Stop-Transcript *> $null
 
 # Update log file with completion
 Write-Log "Automated workstation baseline has completed successfully"
