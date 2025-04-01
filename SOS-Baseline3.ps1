@@ -145,7 +145,7 @@ function Write-Delayed {
     )
     
     # Add to log file
-    Write-Log "UI: $Text"
+    Write-Log "$Text"
     
     # Write to transcript in one go (not character by character)
     Write-Host $Text -NoNewline -ForegroundColor $Color
@@ -186,11 +186,10 @@ function Write-TaskComplete {
     
     # Write to both transcript and console with single call
     # This replaces the separate Write-Host and [Console]::Write calls
+    # WriteLine produces a newline automatically
     Write-Host " done." -ForegroundColor Green
     
-    # Visual formatting for console only needs a newline since Write-Host 
-    # already output the colored text
-    [Console]::WriteLine()
+    # No need for additional newline here, Write-Host already adds one
 }
 
 function Write-TaskFailed {
@@ -201,9 +200,7 @@ function Write-TaskFailed {
     # This replaces the separate Write-Host and [Console]::Write calls
     Write-Host " failed." -ForegroundColor Red
     
-    # Visual formatting for console only needs a newline since Write-Host 
-    # already output the colored text
-    [Console]::WriteLine()
+    # No need for additional newline here, Write-Host already adds one
 }
 
 function Move-ProcessWindowToTopRight {
