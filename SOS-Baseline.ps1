@@ -1123,10 +1123,9 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
             
             # Display recovery info
             Write-Delayed "Bitlocker has been successfully configured." -NewLine:$true
-            Write-Delayed "Recovery ID:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $recoveryId"
-            Write-Delayed "Recovery Password:" -NewLine:$false
-            Write-Host -ForegroundColor Cyan " $recoveryPassword"
+            # Display recovery details
+            Write-Host -ForegroundColor Cyan "Recovery ID: $recoveryId"
+            Write-Host -ForegroundColor Cyan "Recovery Password: $recoveryPassword"
             
             # Log success
             Write-Log "BitLocker encryption configured successfully with Recovery ID: $recoveryId"
