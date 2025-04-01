@@ -108,6 +108,23 @@ $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.Ps
 if (-not (Test-Path $TempFolder)) { New-Item -Path $TempFolder -ItemType Directory | Out-Null }
 if (-not (Test-Path $LogFile)) { New-Item -Path $LogFile -ItemType File | Out-Null }
 
+# Add log file header
+$headerBorder = "=" * 80
+$header = @"
+$headerBorder
+                        SOS WORKSTATION BASELINE LOG
+                             Version $ScriptVersion
+                      $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+$headerBorder
+
+Computer: $env:COMPUTERNAME
+User: $env:USERNAME
+Windows: $(Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Caption)
+$headerBorder
+
+"@
+Add-Content -Path $LogFile -Value $header
+
 # Set working directory
 Set-Location -Path $TempFolder
 
@@ -177,7 +194,8 @@ function Write-Delayed {
 
 function Write-Log {
     param ([string]$Message)
-    Add-Content -Path $LogFile -Value "$(Get-Date) - $Message"
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Add-Content -Path $LogFile -Value "[$timestamp] $Message"
 }
 
 function Write-TaskComplete {
@@ -2032,6 +2050,16 @@ Stop-Transcript
 
 # Update log file with completion
 Write-Log "Automated workstation baseline has completed successfully"
+
+# Add footer to log file
+$footerBorder = "=" * 80
+$footer = @"
+$footerBorder
+                     SCRIPT EXECUTION COMPLETED SUCCESSFULLY
+                      $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+$footerBorder
+"@
+Add-Content -Path $LogFile -Value $footer
 
 Read-Host -Prompt "Press enter to exit"
 Stop-Process -Id $PID -Force
