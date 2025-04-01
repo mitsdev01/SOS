@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.5.5                                            #
+#                                                 Version 1.5.4-beta                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.5.5
+    Version:        1.5.4
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.5.5"
+$ScriptVersion = "1.5.4j"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -202,22 +202,23 @@ function Write-TaskComplete {
     # Log to file
     Write-Log "Task completed successfully"
     
-    # Write to both transcript and console without creating a new line
-    Write-Host " done." -ForegroundColor Green -NoNewline
+    # Write to both transcript and console with single call
+    # This replaces the separate Write-Host and [Console]::Write calls
+    # WriteLine produces a newline automatically
+    Write-Host " done." -ForegroundColor Green
     
-    # Add the newline after the "done." message
-    Write-Host ""
+    # No need for additional newline here, Write-Host already adds one
 }
 
 function Write-TaskFailed {
     # Log to file
     Write-Log "Task failed"
     
-    # Write to both transcript and console without creating a new line
-    Write-Host " failed." -ForegroundColor Red -NoNewline
+    # Write to both transcript and console with single call
+    # This replaces the separate Write-Host and [Console]::Write calls
+    Write-Host " failed." -ForegroundColor Red
     
-    # Add the newline after the "failed." message
-    Write-Host ""
+    # No need for additional newline here, Write-Host already adds one
 }
 
 function Move-ProcessWindowToTopRight {
@@ -1122,9 +1123,10 @@ if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
             
             # Display recovery info
             Write-Delayed "Bitlocker has been successfully configured." -NewLine:$true
-            # Display recovery details
-            Write-Host -ForegroundColor Cyan "Recovery ID: $recoveryId"
-            Write-Host -ForegroundColor Cyan "Recovery Password: $recoveryPassword"
+            Write-Delayed "Recovery ID:" -NewLine:$false
+            Write-Host -ForegroundColor Cyan " $recoveryId"
+            Write-Delayed "Recovery Password:" -NewLine:$false
+            Write-Host -ForegroundColor Cyan " $recoveryPassword"
             
             # Log success
             Write-Log "BitLocker encryption configured successfully with Recovery ID: $recoveryId"
@@ -1669,7 +1671,7 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
         [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
         [Console]::Write($spinner[$spinnerIndex])
         $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        Start-Sleep -Milliseconds 100
+        Start-Sleep -Milliseconds 250
     }
     
     # Get the result of the domain join operation
@@ -1998,7 +2000,7 @@ try {
         return $true
     }
     
-    # Show spinner whilne waiting for the job to complete
+    # Show spinner while waiting for the job to complete
     while ($job.State -eq 'Running') {
         [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
         $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
