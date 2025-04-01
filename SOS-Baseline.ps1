@@ -117,10 +117,10 @@ $headerBorder
                          $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 $headerBorder
 
-#Computer: $env:COMPUTERNAME
-#User: $env:USERNAME
-#Windows: $(Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Caption)
-#$headerBorder
+Computer: $env:COMPUTERNAME
+User: $env:USERNAME
+Windows: $(Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Caption)
+$headerBorder
 
 "@
 Add-Content -Path $LogFile -Value $header
