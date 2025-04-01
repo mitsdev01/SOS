@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.5.4a"
+$ScriptVersion = "1.5.4b"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
