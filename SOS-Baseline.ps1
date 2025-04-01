@@ -505,7 +505,7 @@ Start-Sleep -Seconds 2
 #Write-Log "Automated workstation baseline has started"
 
 # Check for required modules
-Write-Host "Checking for required modules..." -NoNewline
+Write-Host "`nChecking for required modules..." -NoNewline
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
