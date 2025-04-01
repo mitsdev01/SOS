@@ -1,3 +1,49 @@
+############################################################################################################
+#                                     SOS - Sophos Connect VPN Deployment                                    #
+#                                                 Version 1.0.0                                             #
+############################################################################################################
+#region Synopsis
+<#
+.SYNOPSIS
+    Automates the deployment and configuration of Sophos Connect VPN client.
+
+.DESCRIPTION
+    This script streamlines the Sophos Connect VPN client deployment process, including:
+    - Downloading the Sophos Connect MSI installer from a specified URL
+    - Downloading the VPN configuration (.scx) file from a specified URL
+    - Silent installation of the Sophos Connect client
+    - Automatic import of the VPN configuration
+    - Verification of successful installation
+    - Cleanup of temporary installation files
+    
+    The script runs with minimal user intervention and provides detailed status
+    feedback for each deployment phase.
+
+.PARAMETER None
+    This script does not accept parameters, but uses predefined variables that 
+    should be customized before deployment:
+    - $installerUrl: URL to the Sophos Connect MSI installer
+    - $configUrl: URL to the VPN configuration (.scx) file
+    - $installerPath: Local path to save the downloaded MSI
+    - $configPath: Local path to save the downloaded configuration
+
+.NOTES
+    Version:        1.0.0
+    Author:         Bill Ulrich
+    Creation Date:  3/25/2025
+    Requires:       Administrator privileges
+                    Internet connectivity
+                    PowerShell 5.1+
+    
+.EXAMPLE
+    .\Deploy-SophosConnect.ps1
+    
+    Run the script with administrator privileges to deploy Sophos Connect VPN client.
+
+.LINK
+    https://github.com/mitsdev01/SOS
+#>
+
 # Sophos Connect Deployment Script for Datto RMM
 
 # Define variables
