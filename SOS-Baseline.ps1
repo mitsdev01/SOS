@@ -1983,58 +1983,6 @@ try {
     Write-Log "Error in computer rename process: $_"
 }
 
-<# Create a restore point
-Write-Delayed "Creating a system restore point..." -NewLine:$false
-
-# Initialize spinner
-$spinner = @('/', '-', '\', '|')
-$spinnerIndex = 0
-[Console]::Write($spinner[$spinnerIndex])
-
-try {
-    # Run the system restore point creation in a background job to allow for spinner animation
-    $job = Start-Job -ScriptBlock {
-        Checkpoint-Computer -Description "SOS Baseline Completed" -RestorePointType "APPLICATION_INSTALL" -ErrorAction Stop
-        return $true
-    }
-    
-    # Show spinner whilne waiting for the job to complete
-    while ($job.State -eq 'Running') {
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        [Console]::Write($spinner[$spinnerIndex])
-        Start-Sleep -Milliseconds 250
-    }
-    
-    # Get the result of the job
-    $result = Receive-Job -Job $job
-    Remove-Job -Job $job -Force
-    
-    if ($result -eq $true) {
-        # Replace spinner with done message
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write(" done.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        
-        Write-Log "System restore point created successfully"
-    } else {
-        throw "Failed to create system restore point"
-    }
-} catch {
-    # Replace spinner with failed message
-    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" failed.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    
-    Write-Host "An error occurred: $_" -ForegroundColor Red
-    Write-Log "Error creating system restore point: $_"
-}
-#>
-
 
 # Create a restore point
 Write-Delayed "Creating a system restore point..." -NewLine:$false
