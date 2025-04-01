@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.5.4                                            #
+#                                                 Version 1.5.4-beta                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Initial setup and version
 Set-ExecutionPolicy RemoteSigned -Force *> $null
-$ScriptVersion = "1.5.4"
+$ScriptVersion = "1.5.4a"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -428,10 +428,10 @@ function Start-CleanTranscript {
     
     try {
         # Stop any existing transcript
-        try { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null } catch {}
+        try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
         
         # Start new transcript
-        Start-Transcript -Path $Path -Force -ErrorAction Stop | Out-Null
+        Start-Transcript -Path $Path -Force -ErrorAction Stop
         
         # Don't write the header here anymore, it will be displayed in the Title Screen section
         return $true
@@ -443,7 +443,7 @@ function Start-CleanTranscript {
 }
 
 # Call the function after the necessary variables are set
-Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
+Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
 
 ############################################################################################################
 #                                             Title Screen                                                 #
@@ -2036,7 +2036,7 @@ Write-Host " "
 #endregion Summary
 
 # Stopping transcript
-Stop-Transcript | Out-Null
+Stop-Transcript
 
 # Update log file with completion
 Write-Log "Automated workstation baseline has completed successfully"
