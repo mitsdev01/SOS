@@ -41,16 +41,16 @@
     https://github.com/mitsdev01/SOS
 #>
 
+param (
+    [string]$UserName = $env:USERNAME
+)
+
 # Check if running as Administrator
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Host "This script must be run as an Administrator!" -ForegroundColor Red
     Start-Sleep -Seconds 5
     exit
 }
-
-param (
-    [string]$UserName = $env:USERNAME
-)
 
 # Create a temporary directory if it doesn't exist
 $tempFolder = "C:\temp"
