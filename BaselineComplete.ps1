@@ -4,17 +4,58 @@ $ScriptVersion = "1.0.1"
 
 # Add Print-Middle function from SOS-Baseline3.ps1
 function Print-Middle($Message, $Color = "White") {
-    Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
-    Write-Host -ForegroundColor $Color $Message
+    # Get the console width
+    $consoleWidth = [System.Console]::BufferWidth
+    
+    # Calculate padding - ensure it doesn't result in negative numbers
+    $padding = [Math]::Max(0, [Math]::Floor(($consoleWidth / 2) - ($Message.Length / 2)))
+    
+    # Create padded string
+    $paddedMessage = " " * $padding + $Message
+    
+    # Ensure we don't exceed buffer width
+    if ($paddedMessage.Length -gt $consoleWidth) {
+        $paddedMessage = $paddedMessage.Substring(0, $consoleWidth - 1)
+    }
+    
+    # Output with given color
+    Write-Host $paddedMessage -ForegroundColor $Color
 }
 
 # Title Display using Print-Middle
 $Padding = ("=" * [System.Console]::BufferWidth)
 Write-Host -ForegroundColor Green $Padding
-Print-Middle "SOS - Workstation Baseline Verification" "Cyan"
+Print-Middle "SOS - Workstation Baseline Verification" "Yellow"
 Print-Middle "Version $ScriptVersion" "Yellow"
 Write-Host -ForegroundColor Green $Padding
 Write-Host ""
+
+# Check definitions status early
+Write-Host "Definitions: " -NoNewline
+try {
+    $avCheck = Get-WmiObject -Namespace "root\SecurityCenter2" -Class AntiVirusProduct -ErrorAction Stop | Select-Object -First 1
+    if ($avCheck) {
+        # Decode status based on SecurityCenter2 standard codes
+        $statusCode = $avCheck.productState
+        $statusHex = $statusCode.ToString("X6")
+        $dStatus = $statusHex.Substring(4, 2)
+        
+        $upToDate = if ($dStatus -eq "00") { $true } else { $false }
+        
+        if ($upToDate) {
+            Write-Host "Up to date" -ForegroundColor Green
+        }
+        else {
+            Write-Host "Out of date" -ForegroundColor Red
+        }
+    }
+    else {
+        Write-Host "Unknown" -ForegroundColor Yellow
+    }
+}
+catch {
+    Write-Host "Unknown" -ForegroundColor Yellow
+}
 
 # Function definitions
 function Write-Delayed {
@@ -200,51 +241,16 @@ try {
                 Select-Object DisplayName, DisplayVersion |
                 Sort-Object DisplayName
     
-    # Get Datto RMM status
-    $dattoInstalled = $Software | Where-Object { $_.DisplayName -like "*Datto*" -or $_.DisplayName -like "*CentraStage*" }
-    if ($dattoInstalled) {
-        Write-Host "Datto RMM Agent: " -NoNewline
-        Write-Host "INSTALLED" -ForegroundColor Green
-        foreach ($agent in $dattoInstalled) {
-            Write-Host "  $($agent.DisplayName) v$($agent.DisplayVersion)"
-        }
-    }
-    else {
-        Write-Host "Datto RMM Agent: " -NoNewline
-        Write-Host "NOT INSTALLED" -ForegroundColor Red
-    }
+    # Create a clean table without any headers
+    $format = "{0,-50} {1,-25}"
     
-    # Check Microsoft 365
-    $office365 = $Software | Where-Object { $_.DisplayName -like "*Microsoft 365*" -or $_.DisplayName -like "*Office 365*" }
-    if ($office365) {
-        Write-Host "Microsoft 365: " -NoNewline
-        Write-Host "INSTALLED" -ForegroundColor Green
-        foreach ($app in $office365) {
-            Write-Host "  $($app.DisplayName) v$($app.DisplayVersion)"
-        }
-    }
-    else {
-        Write-Host "Microsoft 365: " -NoNewline
-        Write-Host "NOT INSTALLED" -ForegroundColor Red
-    }
+    # Print a divider line at the beginning
+    Write-Host ""
     
-    # Check Adobe Reader
-    $adobeReader = $Software | Where-Object { $_.DisplayName -like "*Adobe*Reader*" -or $_.DisplayName -like "*Acrobat*Reader*" }
-    if ($adobeReader) {
-        Write-Host "Adobe Reader: " -NoNewline
-        Write-Host "INSTALLED" -ForegroundColor Green
-        foreach ($app in $adobeReader) {
-            Write-Host "  $($app.DisplayName) v$($app.DisplayVersion)"
-        }
+    # Skip the headers and separator lines - go straight to content
+    $Software | ForEach-Object {
+        Write-Host $($format -f $_.DisplayName, $_.DisplayVersion)
     }
-    else {
-        Write-Host "Adobe Reader: " -NoNewline
-        Write-Host "NOT INSTALLED" -ForegroundColor Red
-    }
-    
-    # Other notable software
-    Write-Host "`nOther Notable Software:" -ForegroundColor Cyan
-    $Software | Select-Object -First 15 | Format-Table -AutoSize
     
     if ($Software.Count -gt 15) {
         Write-Host "...and $($Software.Count - 15) more applications" -ForegroundColor Gray
@@ -428,7 +434,7 @@ Write-SectionHeader "Power Configuration"
 try {
     $powerCfg = powercfg /list
     $activePlan = ($powerCfg | Select-String -Pattern "\*").Line
-    Write-Host "Power Plan: " -NoNewline
+    Write-Host "Active Power Plan: " -NoNewline
     Write-Host $activePlan.Trim() -ForegroundColor Cyan
     
     # Check sleep settings

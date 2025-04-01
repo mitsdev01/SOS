@@ -1670,7 +1670,7 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
         [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
         [Console]::Write($spinner[$spinnerIndex])
         $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        Start-Sleep -Milliseconds 250
+        Start-Sleep -Milliseconds 100
     }
     
     # Get the result of the domain join operation
@@ -1999,7 +1999,7 @@ try {
         return $true
     }
     
-    # Show spinner while waiting for the job to complete
+    # Show spinner whilne waiting for the job to complete
     while ($job.State -eq 'Running') {
         [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
         $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
