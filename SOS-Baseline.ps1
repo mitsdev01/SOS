@@ -638,7 +638,7 @@ $installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/ce8a0
 # Check for existing Datto RMM agent
 $installStatus = Test-DattoInstallation
 if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
-    #Write-Host "Datto RMM agent is already installed and running." -ForegroundColor Green
+    Write-Host "Datto RMM agent is already installed and running." -ForegroundColor Cyan
     Write-Log "Datto RMM agent already installed and running"
 } else {
     # Clean up any partial installations
