@@ -29,7 +29,7 @@
                     Windows 10/11 Professional
     
 .EXAMPLE
-    .\SOS-Baseline.ps1
+    .\SOS-Bas  eline.ps1
     
     Run the script with administrator privileges to execute the full baseline configuration.
 
@@ -44,8 +44,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     return
 }
 
-# Initial setup and version
-$ScriptVersion = "1.5.7"
+# Initial setup and version$$ScriptVersion = "1.5.7"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -165,33 +164,33 @@ function Write-Delayed {
     # Add to log file
     Write-Log "$Text"
     
-    # Write to transcript only once using Write-Host
-    # This is what will appear in the transcript file
+    # Write to transcript in one go (not character by character)
     Write-Host $Text -NoNewline -ForegroundColor $Color
+    if ($NewLine) {
+        Write-Host ""
+    }
     
-    # Now do the character-by-character animation for the console
-    # This uses [Console] which doesn't affect transcript content
-    $chars = $Text.ToCharArray()
-    foreach ($char in $chars) {
-        # Erase the current line to avoid duplication in console
-        [Console]::SetCursorPosition(0, [Console]::CursorTop)
-        [Console]::Write("".PadRight([Console]::BufferWidth - 1))
-        [Console]::SetCursorPosition(0, [Console]::CursorTop)
-        
-        # Rewrite the entire text up to this character
-        $idx = [Array]::IndexOf($chars, $char)
-        $partialText = $Text.Substring(0, $idx + 1)
-        [Console]::ForegroundColor = $Color
-        [Console]::Write($partialText)
-        
+    # Clear the line where we just wrote to avoid duplication in console
+    $originalColor = [Console]::ForegroundColor
+    [Console]::ForegroundColor = $Color
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
+    [Console]::Write("".PadRight([Console]::BufferWidth - 1))  # Clear the line
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
+    
+    # Now do the visual character-by-character animation for the console only
+    foreach ($char in $Text.ToCharArray()) {
+        [Console]::Write($char)
         Start-Sleep -Milliseconds 25
     }
     
-    # Add newline if requested (both in transcript and console)
+    # Add newline if requested
     if ($NewLine) {
-        Write-Host ""
-        # No need for Console.WriteLine as the Write-Host above handles it
+        [Console]::WriteLine()
     }
+    
+    # Restore original color
+    [Console]::ForegroundColor = $originalColor
+
 }
 
 function Write-Log {
@@ -1812,188 +1811,181 @@ try {
 ############################################################################################################
 #region Rename Machine
 
-# Check if rename has already been performed by the launcher
-$trackerFilePath = "C:\temp\sos-rename-complete.flag"
-if (Test-Path -Path $trackerFilePath) {
-    Write-Delayed "Machine rename already performed via launcher, skipping..." -NewLine:$false
-    Write-TaskComplete
-    Write-Log "Machine rename skipped - tracker file found at $trackerFilePath"
-} else {
-    # Rename machine functionality with GUI prompt
-    Write-Delayed "Prompting for new machine rename..." -NewLine:$false
-    try {
-        # Load required assemblies for GUI
-        Add-Type -AssemblyName System.Windows.Forms
-        Add-Type -AssemblyName System.Drawing
+# Rename machine functionality with GUI prompt
+Write-Delayed "Prompting for new machine rename..." -NewLine:$false
+try {
+    # Load required assemblies for GUI
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
 
-        # Add P/Invoke declarations for setting window position and foreground
-        Add-Type -TypeDefinition @"
-            using System;
-            using System.Runtime.InteropServices;
+    # Add P/Invoke declarations for setting window position and foreground
+    Add-Type -TypeDefinition @"
+        using System;
+        using System.Runtime.InteropServices;
+        
+        public class ForegroundWindow {
+            [DllImport("user32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool SetForegroundWindow(IntPtr hWnd);
             
-            public class ForegroundWindow {
-                [DllImport("user32.dll")]
-                [return: MarshalAs(UnmanagedType.Bool)]
-                public static extern bool SetForegroundWindow(IntPtr hWnd);
-                
-                [DllImport("user32.dll")]
-                public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-                
-                [DllImport("user32.dll", SetLastError = true)]
-                public static extern bool BringWindowToTop(IntPtr hWnd);
-                
-                [DllImport("user32.dll")]
-                public static extern IntPtr GetForegroundWindow();
-                
-                [DllImport("user32.dll")]
-                public static extern bool FlashWindow(IntPtr hwnd, bool bInvert);
+            [DllImport("user32.dll")]
+            public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+            
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool BringWindowToTop(IntPtr hWnd);
+            
+            [DllImport("user32.dll")]
+            public static extern IntPtr GetForegroundWindow();
+            
+            [DllImport("user32.dll")]
+            public static extern bool FlashWindow(IntPtr hwnd, bool bInvert);
 
-                [DllImport("user32.dll")]
-                public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-                
-                public const int GWL_EXSTYLE = -20;
-                public const int WS_EX_TOPMOST = 0x0008;
-            }
+            [DllImport("user32.dll")]
+            public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+            
+            public const int GWL_EXSTYLE = -20;
+            public const int WS_EX_TOPMOST = 0x0008;
+        }
 "@
 
-        # Create form
-        $form = New-Object System.Windows.Forms.Form
-        $form.Text = "Rename Machine"
-        $form.Size = New-Object System.Drawing.Size(400, 200)
-        $form.StartPosition = "CenterScreen"
-        $form.FormBorderStyle = "FixedDialog"
-        $form.MaximizeBox = $false
-        $form.MinimizeBox = $false
-        $form.TopMost = $true
-        
-        # Create label
-        $label = New-Object System.Windows.Forms.Label
-        $label.Location = New-Object System.Drawing.Point(10, 20)
-        $label.Size = New-Object System.Drawing.Size(380, 20)
-        $label.Text = "Enter new machine name (15 characters max, no spaces):"
-        $form.Controls.Add($label)
+    # Create form
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Rename Machine"
+    $form.Size = New-Object System.Drawing.Size(400, 200)
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.TopMost = $true
+    
+    # Create label
+    $label = New-Object System.Windows.Forms.Label
+    $label.Location = New-Object System.Drawing.Point(10, 20)
+    $label.Size = New-Object System.Drawing.Size(380, 20)
+    $label.Text = "Enter new machine name (15 characters max, no spaces):"
+    $form.Controls.Add($label)
 
-        # Create textbox
-        $textBox = New-Object System.Windows.Forms.TextBox
-        $textBox.Location = New-Object System.Drawing.Point(10, 50)
-        $textBox.Size = New-Object System.Drawing.Size(360, 20)
-        $textBox.MaxLength = 15
-        $textBox.Text = $env:COMPUTERNAME
-        $form.Controls.Add($textBox)
+    # Create textbox
+    $textBox = New-Object System.Windows.Forms.TextBox
+    $textBox.Location = New-Object System.Drawing.Point(10, 50)
+    $textBox.Size = New-Object System.Drawing.Size(360, 20)
+    $textBox.MaxLength = 15
+    $textBox.Text = $env:COMPUTERNAME
+    $form.Controls.Add($textBox)
 
-        # Create status label
-        $statusLabel = New-Object System.Windows.Forms.Label
-        $statusLabel.Location = New-Object System.Drawing.Point(10, 80)
-        $statusLabel.Size = New-Object System.Drawing.Size(380, 20)
-        $statusLabel.ForeColor = [System.Drawing.Color]::Red
-        $form.Controls.Add($statusLabel)
+    # Create status label
+    $statusLabel = New-Object System.Windows.Forms.Label
+    $statusLabel.Location = New-Object System.Drawing.Point(10, 80)
+    $statusLabel.Size = New-Object System.Drawing.Size(380, 20)
+    $statusLabel.ForeColor = [System.Drawing.Color]::Red
+    $form.Controls.Add($statusLabel)
 
-        # Create OK button
-        $okButton = New-Object System.Windows.Forms.Button
-        $okButton.Location = New-Object System.Drawing.Point(75, 120)
-        $okButton.Size = New-Object System.Drawing.Size(100, 30)
-        $okButton.Text = "Rename"
-        $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-        $form.Controls.Add($okButton)
-        $form.AcceptButton = $okButton
+    # Create OK button
+    $okButton = New-Object System.Windows.Forms.Button
+    $okButton.Location = New-Object System.Drawing.Point(75, 120)
+    $okButton.Size = New-Object System.Drawing.Size(100, 30)
+    $okButton.Text = "Rename"
+    $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $form.Controls.Add($okButton)
+    $form.AcceptButton = $okButton
 
-        # Create Cancel button
-        $cancelButton = New-Object System.Windows.Forms.Button
-        $cancelButton.Location = New-Object System.Drawing.Point(225, 120)
-        $cancelButton.Size = New-Object System.Drawing.Size(100, 30)
-        $cancelButton.Text = "Skip"
-        $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-        $form.Controls.Add($cancelButton)
-        $form.CancelButton = $cancelButton
+    # Create Cancel button
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Location = New-Object System.Drawing.Point(225, 120)
+    $cancelButton.Size = New-Object System.Drawing.Size(100, 30)
+    $cancelButton.Text = "Skip"
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $form.Controls.Add($cancelButton)
+    $form.CancelButton = $cancelButton
 
-        # Validate name when text changes
-        $textBox.Add_TextChanged({
-            $newName = $textBox.Text
-            if ($newName -match '\s') {
-                $statusLabel.Text = "Machine name cannot contain spaces"
-                $okButton.Enabled = $false
-            } elseif ($newName.Length -eq 0) {
-                $statusLabel.Text = "Machine name cannot be empty"
-                $okButton.Enabled = $false
-            } elseif ($newName -notmatch '^[a-zA-Z0-9\-]+$') {
-                $statusLabel.Text = "Only letters, numbers, and hyphens are allowed"
-                $okButton.Enabled = $false
-            } else {
-                $statusLabel.Text = ""
-                $okButton.Enabled = $true
-            }
-        })
-
-        # Additional form setup before showing
-        $form.Add_Shown({
-            # Set focus to the form
-            $form.Activate()
-            $form.Focus()
-            
-            # Delay to ensure other operations are complete
-            Start-Sleep -Milliseconds 100
-            
-            # These force the window to be on top and active
-            [ForegroundWindow]::BringWindowToTop($form.Handle)
-            [ForegroundWindow]::SetForegroundWindow($form.Handle)
-            [ForegroundWindow]::ShowWindow($form.Handle, 5) # SW_SHOW
-            
-            # Flash the window to get attention
-            [ForegroundWindow]::FlashWindow($form.Handle, $true)
-            
-            # Set window as topmost via the Windows API
-            [ForegroundWindow]::SetWindowLong($form.Handle, [ForegroundWindow]::GWL_EXSTYLE, 
-                [ForegroundWindow]::WS_EX_TOPMOST)
-        })
-
-        # Show the form
-        $result = $form.ShowDialog()
-
-        # If OK was clicked and the name is different
-        if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $textBox.Text -ne $env:COMPUTERNAME) {
-            $newName = $textBox.Text
-            
-            # Validate name
-            if ($newName -match '^[a-zA-Z0-9\-]{1,15}$') {
-                # Rename the machine
-                Rename-Computer -NewName $newName -Force
-                Write-Log "Machine renamed to: $newName (requires restart)"
-                
-                # Create a topmost message box for confirmation
-                $confirmBox = New-Object System.Windows.Forms.Form
-                $confirmBox.TopMost = $true
-                [System.Windows.Forms.MessageBox]::Show(
-                    $confirmBox,
-                    "Computer has been renamed to '$newName'. Changes will take effect after restart.",
-                    "Rename Successful",
-                    [System.Windows.Forms.MessageBoxButtons]::OK,
-                    [System.Windows.Forms.MessageBoxIcon]::Information
-                )
-                Write-TaskComplete
-            } else {
-                Write-Log "Invalid Machine name entered: $newName"
-                
-                # Create a topmost message box for error
-                $errorBox = New-Object System.Windows.Forms.Form
-                $errorBox.TopMost = $true
-                [System.Windows.Forms.MessageBox]::Show(
-                    $errorBox,
-                    "Invalid Machine name. Rename skipped.", 
-                    "Rename Failed", 
-                    [System.Windows.Forms.MessageBoxButtons]::OK, 
-                    [System.Windows.Forms.MessageBoxIcon]::Error
-                )
-                Write-Host " skipped - invalid name." -ForegroundColor Yellow
-            }
+    # Validate name when text changes
+    $textBox.Add_TextChanged({
+        $newName = $textBox.Text
+        if ($newName -match '\s') {
+            $statusLabel.Text = "Machine name cannot contain spaces"
+            $okButton.Enabled = $false
+        } elseif ($newName.Length -eq 0) {
+            $statusLabel.Text = "Machine name cannot be empty"
+            $okButton.Enabled = $false
+        } elseif ($newName -notmatch '^[a-zA-Z0-9\-]+$') {
+            $statusLabel.Text = "Only letters, numbers, and hyphens are allowed"
+            $okButton.Enabled = $false
         } else {
-            Write-Log "Machine rename skipped by user"
-            Write-Host " skipped." -ForegroundColor Yellow
+            $statusLabel.Text = ""
+            $okButton.Enabled = $true
         }
-    } catch {
-        Write-Host " failed: $_" -ForegroundColor Red
-        Write-Log "Error in computer rename process: $_"
+    })
+
+    # Additional form setup before showing
+    $form.Add_Shown({
+        # Set focus to the form
+        $form.Activate()
+        $form.Focus()
+        
+        # Delay to ensure other operations are complete
+        Start-Sleep -Milliseconds 100
+        
+        # These force the window to be on top and active
+        [ForegroundWindow]::BringWindowToTop($form.Handle)
+        [ForegroundWindow]::SetForegroundWindow($form.Handle)
+        [ForegroundWindow]::ShowWindow($form.Handle, 5) # SW_SHOW
+        
+        # Flash the window to get attention
+        [ForegroundWindow]::FlashWindow($form.Handle, $true)
+        
+        # Set window as topmost via the Windows API
+        [ForegroundWindow]::SetWindowLong($form.Handle, [ForegroundWindow]::GWL_EXSTYLE, 
+            [ForegroundWindow]::WS_EX_TOPMOST)
+    })
+
+    # Show the form
+    $result = $form.ShowDialog()
+
+    # If OK was clicked and the name is different
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $textBox.Text -ne $env:COMPUTERNAME) {
+        $newName = $textBox.Text
+        
+        # Validate name
+        if ($newName -match '^[a-zA-Z0-9\-]{1,15}$') {
+            # Rename the machine
+            Rename-Computer -NewName $newName -Force
+            Write-Log "Machine renamed to: $newName (requires restart)"
+            
+            # Create a topmost message box for confirmation
+            $confirmBox = New-Object System.Windows.Forms.Form
+            $confirmBox.TopMost = $true
+            [System.Windows.Forms.MessageBox]::Show(
+                $confirmBox,
+                "Computer has been renamed to '$newName'. Changes will take effect after restart.",
+                "Rename Successful",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
+            Write-TaskComplete
+        } else {
+            Write-Log "Invalid Machine name entered: $newName"
+            
+            # Create a topmost message box for error
+            $errorBox = New-Object System.Windows.Forms.Form
+            $errorBox.TopMost = $true
+            [System.Windows.Forms.MessageBox]::Show(
+                $errorBox,
+                "Invalid Machine name. Rename skipped.", 
+                "Rename Failed", 
+                [System.Windows.Forms.MessageBoxButtons]::OK, 
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            )
+            Write-Host " skipped - invalid name." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Log "Machine rename skipped by user"
+        Write-Host " skipped." -ForegroundColor Yellow
     }
+} catch {
+    Write-Host " failed: $_" -ForegroundColor Red
+    Write-Log "Error in computer rename process: $_"
 }
+
 
 # Create a restore point
 Write-Delayed "Creating a system restore point..." -NewLine:$false
