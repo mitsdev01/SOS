@@ -479,7 +479,7 @@ function Start-CleanTranscript {
 
 # Call the function after the necessary variables are set
 Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
-
+Clear-Host
 ############################################################################################################
 #                                             Title Screen                                                 #
 #                                                                                                          #
