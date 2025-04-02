@@ -52,7 +52,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit
 }
 
-$ScriptVersion = "1.0.4"
+$ScriptVersion = "1.0.4b"
 
 Start-Transcript -Path "c:\temp\baseline-launcher.log"
 
@@ -300,7 +300,7 @@ try {
             $confirmBox.TopMost = $true
             [System.Windows.Forms.MessageBox]::Show(
                 $confirmBox,
-                "Computer has been renamed to '$newName'. `n     System will reboot automatically.",
+                "Computer has been renamed to '$newName'. `n          System will reboot automatically.",
                 "Rename Successful",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Information
