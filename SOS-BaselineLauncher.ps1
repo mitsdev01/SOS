@@ -52,6 +52,8 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit
 }
 
+$ScriptVersion = "1.0.4"
+
 Start-Transcript -Path "c:\temp\baseline-launcher.log"
 
 # Create a temporary directory if it doesn't exist
@@ -110,7 +112,8 @@ function Print-Center {
 # Display header
 Clear-Host
 Write-Host ("=" * [Console]::BufferWidth) -ForegroundColor Green
-Print-Center "SOS - Workstation Baseline Launcher" "Yellow"
+Print-Center "SOS - Workstation Baseline Launcher"
+Print-Center "Version $ScriptVersion" "Yellow"
 Write-Host ("=" * [Console]::BufferWidth) -ForegroundColor Green
 Write-Host ""
 
