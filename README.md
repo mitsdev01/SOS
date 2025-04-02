@@ -73,7 +73,7 @@ This will perform the complete baseline process including:
 - Bloatware removal
 
 
-## Script Descriptions
+## Script Breakdown
 
 ### SOS-BaselineLauncher.ps1
 
