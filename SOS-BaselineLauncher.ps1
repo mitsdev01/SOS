@@ -306,6 +306,7 @@ try {
                 [System.Windows.Forms.MessageBoxIcon]::Information
             ) | Out-Null # Suppress the result
             Write-TaskComplete
+            Start-Sleep -Seconds 3
         } else {
             Write-Log "Invalid Machine name entered: $newName"
             
