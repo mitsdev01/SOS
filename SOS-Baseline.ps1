@@ -506,7 +506,7 @@ Start-Sleep -Seconds 2
 #Write-Log "Automated workstation baseline has started"
 
 # Check for required modules
-Write-Host "`nChecking for required modules..." -NoNewline
+Write-Host "`nPreparing required modules..." -NoNewline
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
@@ -1573,7 +1573,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 ############################################################################################################
 #region Bloatware Cleanup
 
-Write-Delayed "Cleaning up bloatware..." -NewLine:$false
+Write-Delayed "Initiating cleaning up of Windows bloatware..." -NewLine:$false
 
 # Trigger SOS Debloat for Windows 11
 if (Is-Windows11) {

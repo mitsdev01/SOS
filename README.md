@@ -85,12 +85,14 @@ A streamlined launcher script that handles the initial setup:
 - After restart, the scheduled task runs once and self-deletes
 
 Access it via the one-liner: `irm bit.ly/sos-baseline-launcher | iex`
+![Launcher Screenshot](images/SOS-Rename.gif)
 
 ### SOS-Baseline.ps1 (Main Script)
 
 The primary script that performs all baseline operations. It includes comprehensive workstation configuration and ensures systems are properly secured and optimized.
 
 Access it directly via: `irm bit.ly/sos-baseline | iex`
+![Launcher Screenshot](images/SOS-Baseline.gif)
 
 ### BaselineComplete.ps1
 
