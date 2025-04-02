@@ -297,7 +297,7 @@ try {
             $confirmBox.TopMost = $true
             [System.Windows.Forms.MessageBox]::Show(
                 $confirmBox,
-                "Computer has been renamed to '$newName'. `nSystem will reboot automatically.",
+                "Computer has been renamed to '$newName'. `n     System will reboot automatically.",
                 "Rename Successful",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Information
