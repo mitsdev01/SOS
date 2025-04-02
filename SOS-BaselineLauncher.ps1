@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                   SOS - Rename and Baseline Launcher                                     #
-#                                                 Version 1.0.0                                            #
+#                                                 Version 1.0.4c                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -21,9 +21,9 @@
     Default: current user
 
 .NOTES
-    Version:        1.0.0
+    Version:        1.0.4c
     Author:         Bill Ulrich
-    Creation Date:  3/25/2025
+    Creation Date:  4/1/2025
     Requires:       Administrator privileges
                     Windows 10/11 Professional
     
@@ -51,6 +51,8 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Start-Sleep -Seconds 5
     exit
 }
+
+$ScriptVersion = "1.0.4c"
 
 Start-Transcript -Path "c:\temp\baseline-launcher.log"
 
@@ -110,7 +112,8 @@ function Print-Center {
 # Display header
 Clear-Host
 Write-Host ("=" * [Console]::BufferWidth) -ForegroundColor Green
-Print-Center "SOS - Workstation Baseline Launcher" "Yellow"
+Print-Center "SOS - Workstation Baseline Launcher"
+Print-Center "Version $ScriptVersion" "Yellow"
 Write-Host ("=" * [Console]::BufferWidth) -ForegroundColor Green
 Write-Host ""
 
@@ -149,7 +152,7 @@ New-Item -Path $trackerFilePath -ItemType File -Force | Out-Null
 Write-Log "Created rename tracker file at $trackerFilePath"
 
 # Rename machine functionality with GUI prompt
-Write-Delayed "Prompting for new machine rename..." -NewLine:$true
+Write-Delayed "Prompting for new machine rename..." -NewLine:$false
 try {
     # Load required assemblies for GUI
     Add-Type -AssemblyName System.Windows.Forms
@@ -288,7 +291,7 @@ try {
         # Validate name
         if ($newName -match '^[a-zA-Z0-9\-]{1,15}$') {
             # Rename the machine
-            Rename-Computer -NewName $newName -Force
+            Rename-Computer -NewName $newName -Force *> $null # Suppress all output
             Write-Log "Machine renamed to: $newName (requires restart)"
             $renameRequired = $true
             
@@ -297,12 +300,13 @@ try {
             $confirmBox.TopMost = $true
             [System.Windows.Forms.MessageBox]::Show(
                 $confirmBox,
-                "Computer has been renamed to '$newName'. System will reboot automatically.",
+                "Computer has been renamed to '$newName'. `n             System will reboot automatically.",
                 "Rename Successful",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Information
-            )
+            ) | Out-Null # Suppress the result
             Write-TaskComplete
+            Start-Sleep -Seconds 3
         } else {
             Write-Log "Invalid Machine name entered: $newName"
             
@@ -315,7 +319,7 @@ try {
                 "Rename Failed", 
                 [System.Windows.Forms.MessageBoxButtons]::OK, 
                 [System.Windows.Forms.MessageBoxIcon]::Error
-            )
+            ) | Out-Null # Suppress the result
             Write-Host " skipped - invalid name." -ForegroundColor Yellow
         }
     } else {
@@ -349,29 +353,40 @@ try {
     Start-Sleep -Seconds 2
     Write-TaskComplete
     
-    # Display restart message
-    Write-Host ""
-    $Padding = ("=" * [System.Console]::BufferWidth)
-    Write-Host -ForegroundColor "Green" $Padding
-    $message = "System will restart in 10 seconds"
-    $padding = [Math]::Max(0, [Math]::Floor(($consoleWidth / 2) - ($message.Length / 2)))
-    $paddedMessage = " " * $padding + $message
-    Write-Host $paddedMessage -ForegroundColor "Yellow"
-    $message = "The baseline script will run automatically after login"
-    $padding = [Math]::Max(0, [Math]::Floor(($consoleWidth / 2) - ($message.Length / 2)))
-    $paddedMessage = " " * $padding + $message
-    Write-Host $paddedMessage -ForegroundColor "Cyan"
-    Write-Host -ForegroundColor "Green" $Padding
-    Write-Host ""
-    
     # Log the restart
-    Write-Log "System restart initiated"
+    $null = Write-Log "System restart initiated"
     
-    # Countdown timer
+    # Suppress any potential output
+    $null = $Padding
+    $null = $paddingSize
+    $null = $consoleWidth
+    
+    # Countdown timer - now before the banner
     for ($i = 10; $i -gt 0; $i--) {
         Write-Host "Restarting in $i seconds..." -ForegroundColor Yellow
         Start-Sleep -Seconds 1
     }
+    
+    # Display restart message - moved after countdown
+    Write-Host ""
+    $Padding = ("=" * [Console]::BufferWidth)
+    Write-Host -ForegroundColor "Green" $Padding
+    
+    # First message
+    $message = "System is restarting now"
+    $consoleWidth = [Console]::BufferWidth
+    $paddingSize = [Math]::Max(0, [Math]::Floor(($consoleWidth / 2) - ($message.Length / 2)))
+    $paddedMessage = (" " * $paddingSize) + $message
+    Write-Host $paddedMessage -ForegroundColor "Yellow"
+    
+    # Second message
+    $message = "The baseline script will run automatically after login"
+    $paddingSize = [Math]::Max(0, [Math]::Floor(($consoleWidth / 2) - ($message.Length / 2)))
+    $paddedMessage = (" " * $paddingSize) + $message
+    Write-Host $paddedMessage -ForegroundColor "Cyan"
+    
+    Write-Host -ForegroundColor "Green" $Padding
+    Write-Host ""
     
     # Restart the computer
     Stop-Transcript | Out-Null
