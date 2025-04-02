@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                   SOS - Rename and Baseline Launcher                                     #
-#                                                 Version 1.0.4b                                            #
+#                                                 Version 1.0.4c                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -21,7 +21,7 @@
     Default: current user
 
 .NOTES
-    Version:        1.0.4b
+    Version:        1.0.4c
     Author:         Bill Ulrich
     Creation Date:  4/1/2025
     Requires:       Administrator privileges
@@ -52,7 +52,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit
 }
 
-$ScriptVersion = "1.0.4b"
+$ScriptVersion = "1.0.4c"
 
 Start-Transcript -Path "c:\temp\baseline-launcher.log"
 
@@ -300,7 +300,7 @@ try {
             $confirmBox.TopMost = $true
             [System.Windows.Forms.MessageBox]::Show(
                 $confirmBox,
-                "Computer has been renamed to '$newName'. `n          System will reboot automatically.",
+                "Computer has been renamed to '$newName'. `n             System will reboot automatically.",
                 "Rename Successful",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Information
