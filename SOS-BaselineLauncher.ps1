@@ -149,7 +149,7 @@ New-Item -Path $trackerFilePath -ItemType File -Force | Out-Null
 Write-Log "Created rename tracker file at $trackerFilePath"
 
 # Rename machine functionality with GUI prompt
-Write-Delayed "Prompting for new machine rename..." -NewLine:$true
+Write-Delayed "Prompting for new machine rename..." -NewLine:$false
 try {
     # Load required assemblies for GUI
     Add-Type -AssemblyName System.Windows.Forms
@@ -301,7 +301,7 @@ try {
                 "Rename Successful",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Information
-            )
+            ) | Out-Null # Suppress the result
             Write-TaskComplete
         } else {
             Write-Log "Invalid Machine name entered: $newName"
@@ -315,7 +315,7 @@ try {
                 "Rename Failed", 
                 [System.Windows.Forms.MessageBoxButtons]::OK, 
                 [System.Windows.Forms.MessageBoxIcon]::Error
-            )
+            ) | Out-Null # Suppress the result
             Write-Host " skipped - invalid name." -ForegroundColor Yellow
         }
     } else {
