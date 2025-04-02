@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                   SOS - Rename and Baseline Launcher                                     #
-#                                                 Version 1.0.4                                            #
+#                                                 Version 1.0.4b                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -21,7 +21,7 @@
     Default: current user
 
 .NOTES
-    Version:        1.0.4
+    Version:        1.0.4b
     Author:         Bill Ulrich
     Creation Date:  4/1/2025
     Requires:       Administrator privileges
