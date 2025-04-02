@@ -288,7 +288,7 @@ try {
         # Validate name
         if ($newName -match '^[a-zA-Z0-9\-]{1,15}$') {
             # Rename the machine
-            Rename-Computer -NewName $newName -Force
+            Rename-Computer -NewName $newName -Force *> $null # Suppress all output
             Write-Log "Machine renamed to: $newName (requires restart)"
             $renameRequired = $true
             
