@@ -29,7 +29,7 @@
                     Windows 10/11 Professional
     
 .EXAMPLE
-    .\SOS-Bas  eline.ps1
+    .\SOS-Baseline.ps1
     
     Run the script with administrator privileges to execute the full baseline configuration.
 
@@ -44,7 +44,8 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     return
 }
 
-# Initial setup and version$$ScriptVersion = "1.5.7"
+# Initial setup and version
+$ScriptVersion = "1.5.7"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -190,7 +191,6 @@ function Write-Delayed {
     
     # Restore original color
     [Console]::ForegroundColor = $originalColor
-
 }
 
 function Write-Log {
