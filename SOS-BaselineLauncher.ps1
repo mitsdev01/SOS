@@ -297,7 +297,7 @@ try {
             $confirmBox.TopMost = $true
             [System.Windows.Forms.MessageBox]::Show(
                 $confirmBox,
-                "Computer has been renamed to '$newName'. System will reboot automatically.",
+                "Computer has been renamed to '$newName'. `nSystem will reboot automatically.",
                 "Rename Successful",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Information
@@ -349,13 +349,27 @@ try {
     Start-Sleep -Seconds 2
     Write-TaskComplete
     
-    # Display restart message
+    # Log the restart
+    $null = Write-Log "System restart initiated"
+    
+    # Suppress any potential output
+    $null = $Padding
+    $null = $paddingSize
+    $null = $consoleWidth
+    
+    # Countdown timer - now before the banner
+    for ($i = 10; $i -gt 0; $i--) {
+        Write-Host "Restarting in $i seconds..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 1
+    }
+    
+    # Display restart message - moved after countdown
     Write-Host ""
     $Padding = ("=" * [Console]::BufferWidth)
     Write-Host -ForegroundColor "Green" $Padding
     
     # First message
-    $message = "System will restart in 10 seconds"
+    $message = "System is restarting now"
     $consoleWidth = [Console]::BufferWidth
     $paddingSize = [Math]::Max(0, [Math]::Floor(($consoleWidth / 2) - ($message.Length / 2)))
     $paddedMessage = (" " * $paddingSize) + $message
@@ -369,20 +383,6 @@ try {
     
     Write-Host -ForegroundColor "Green" $Padding
     Write-Host ""
-    
-    # Log the restart
-    $null = Write-Log "System restart initiated"
-    
-    # Explicitly suppress any output here
-    $null = $Padding
-    $null = $paddingSize
-    $null = $consoleWidth
-    
-    # Countdown timer
-    for ($i = 10; $i -gt 0; $i--) {
-        Write-Host "Restarting in $i seconds..." -ForegroundColor Yellow
-        Start-Sleep -Seconds 1
-    }
     
     # Restart the computer
     Stop-Transcript | Out-Null
