@@ -104,10 +104,12 @@ Generates a detailed verification report showing the current state of a workstat
 - Security and antivirus status
 - Power configuration
 - Overall baseline score
+![Launcher Screenshot](images/SOS-Verification.gif)
 
 ### Update_Windows.ps1
 
 Automates the process of checking for and installing Windows updates using the PSWindowsUpdate module.
+![Launcher Screenshot](images/SOS-Update.gif)
 
 ### Check-Modules.ps1
 
