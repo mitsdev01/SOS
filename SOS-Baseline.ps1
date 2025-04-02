@@ -1814,10 +1814,11 @@ try {
 # Check if rename has already been performed by the launcher
 $trackerFilePath = "C:\temp\sos-rename-complete.flag"
 if (Test-Path -Path $trackerFilePath) {
-    Write-Delayed "Machine rename already performed via launcher, skipping..." -NewLine:$false
+    Write-Host "Machine rename already performed via launcher, skipping..." -NoNewline
     Write-TaskComplete
     Write-Log "Machine rename skipped - tracker file found at $trackerFilePath"
-} else {
+} 
+else {
     # Rename machine functionality with GUI prompt
     Write-Delayed "Prompting for new machine rename..." -NewLine:$false
     try {
@@ -1827,32 +1828,32 @@ if (Test-Path -Path $trackerFilePath) {
 
         # Add P/Invoke declarations for setting window position and foreground
         Add-Type -TypeDefinition @"
-            using System;
-            using System.Runtime.InteropServices;
+        using System;
+        using System.Runtime.InteropServices;
+        
+        public class ForegroundWindow {
+            [DllImport("user32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool SetForegroundWindow(IntPtr hWnd);
             
-            public class ForegroundWindow {
-                [DllImport("user32.dll")]
-                [return: MarshalAs(UnmanagedType.Bool)]
-                public static extern bool SetForegroundWindow(IntPtr hWnd);
-                
-                [DllImport("user32.dll")]
-                public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-                
-                [DllImport("user32.dll", SetLastError = true)]
-                public static extern bool BringWindowToTop(IntPtr hWnd);
-                
-                [DllImport("user32.dll")]
-                public static extern IntPtr GetForegroundWindow();
-                
-                [DllImport("user32.dll")]
-                public static extern bool FlashWindow(IntPtr hwnd, bool bInvert);
+            [DllImport("user32.dll")]
+            public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+            
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool BringWindowToTop(IntPtr hWnd);
+            
+            [DllImport("user32.dll")]
+            public static extern IntPtr GetForegroundWindow();
+            
+            [DllImport("user32.dll")]
+            public static extern bool FlashWindow(IntPtr hwnd, bool bInvert);
 
-                [DllImport("user32.dll")]
-                public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-                
-                public const int GWL_EXSTYLE = -20;
-                public const int WS_EX_TOPMOST = 0x0008;
-            }
+            [DllImport("user32.dll")]
+            public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+            
+            public const int GWL_EXSTYLE = -20;
+            public const int WS_EX_TOPMOST = 0x0008;
+        }
 "@
 
         # Create form

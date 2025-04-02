@@ -149,7 +149,7 @@ New-Item -Path $trackerFilePath -ItemType File -Force | Out-Null
 Write-Log "Created rename tracker file at $trackerFilePath"
 
 # Rename machine functionality with GUI prompt
-Write-Delayed "Prompting for new machine rename..." -NewLine:$false
+Write-Delayed "Prompting for new machine rename..." -NewLine:$true
 try {
     # Load required assemblies for GUI
     Add-Type -AssemblyName System.Windows.Forms
