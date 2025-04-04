@@ -1644,6 +1644,16 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 }
 #endregion Acrobat Installation
 
+
+############################################################################################################
+#                                           Sophos Installation                                           #
+#                                                                                                          #
+############################################################################################################
+#region Sophos Install
+irm https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1 | iex
+#endregion Sophos Install
+
+
 ############################################################################################################
 #                                           Bloatware Cleanup                                              #
 #                                                                                                          #
