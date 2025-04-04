@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.6.0                                            #
+#                                                 Version 1.6.1                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.6.0
+    Version:        1.6.1
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -45,7 +45,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.6.0"
+$ScriptVersion = "1.6.1"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -1658,11 +1658,56 @@ $sophosJob = Start-Job -ScriptBlock {
 } -ArgumentList $sophosScript
 
 # Wait for the Sophos installation to complete
-Write-Host "Installing Sophos AV... " -NoNewline
+Write-Host "Installing Sophos AV..." -NoNewline
+
+# Animation characters for the spinner
+$spinChars = '|', '/', '-', '\'
+$spinIndex = 0
+$initialCursorPosition = $host.UI.RawUI.CursorPosition
+
+# Create a timer for the spinner animation
+$timer = New-Object System.Timers.Timer
+$timer.Interval = 250 # Update every 250ms
+$timer.AutoReset = $true
+
+# Timer event to update the spinner
+$timer.Add_Elapsed({
+    # Capture current cursor position
+    $currentPosition = $host.UI.RawUI.CursorPosition
+    
+    # Return to the spinner position
+    $host.UI.RawUI.CursorPosition = $initialCursorPosition
+    
+    # Display the next spinner character
+    Write-Host $spinChars[$spinIndex] -NoNewline
+    
+    # Update spinner index
+    $spinIndex = ($spinIndex + 1) % $spinChars.Length
+    
+    # Restore cursor position
+    $host.UI.RawUI.CursorPosition = $currentPosition
+})
+
+# Start the spinner animation
+$timer.Start()
+
+# Wait for the Sophos installation job to complete
 $sophosJob | Wait-Job | Out-Null
+
+# Stop the spinner animation
+$timer.Stop()
+$timer.Dispose()
+
+# Go back to the spinner position and replace it with "done"
+$host.UI.RawUI.CursorPosition = $initialCursorPosition
+Write-Host " done." -ForegroundColor Green -NoNewline
+
+# Retrieve and remove the job
 Receive-Job -Job $sophosJob
 Remove-Job -Job $sophosJob -Force
-Write-Host " done." -ForegroundColor Green
+
+# Start a new line
+Write-Host ""
 #endregion Sophos Install
 
 
