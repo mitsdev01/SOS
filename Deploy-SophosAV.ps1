@@ -63,7 +63,7 @@ $InstallerLinks.Add('Visiting Angels', "https://dzr-api-amzn-us-west-2-fa88.api-
 # Create the main form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Sophos AV Installer"
-$form.Size = New-Object System.Drawing.Size(500, 300)
+$form.Size = New-Object System.Drawing.Size(500, 200)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
