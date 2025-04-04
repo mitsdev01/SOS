@@ -1658,7 +1658,7 @@ $sophosJob = Start-Job -ScriptBlock {
 } -ArgumentList $sophosScript
 
 # Wait for the Sophos installation to complete
-Write-Host "Installing Sophos AV... " -NoNewline
+Write-Host "Installing Sophos AV..." -NoNewline
 
 # Animation characters for the spinner
 $spinChars = '|', '/', '-', '\'
