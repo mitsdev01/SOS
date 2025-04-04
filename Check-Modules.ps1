@@ -35,7 +35,7 @@
 
 .LINK
     https://github.com/mitsdev01/SOS
-#>
+#> 
 
 # Set execution policy to bypass for this session
 $originalExecutionPolicy = Get-ExecutionPolicy
