@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.5.8                                            #
+#                                                 Version 1.6.0                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.5.8
+    Version:        1.6.0
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -45,7 +45,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.5.8"
+$ScriptVersion = "1.6.0"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -1650,7 +1650,19 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 #                                                                                                          #
 ############################################################################################################
 #region Sophos Install
-irm https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1 | iex
+# Run the Sophos installation script and wait for it to complete before continuing
+$sophosScript = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1" -UseBasicParsing).Content
+$sophosJob = Start-Job -ScriptBlock { 
+    param($scriptContent)
+    Invoke-Expression $scriptContent
+} -ArgumentList $sophosScript
+
+# Wait for the Sophos installation to complete
+Write-Host "Installing Sophos AV... " -NoNewline
+$sophosJob | Wait-Job | Out-Null
+Receive-Job -Job $sophosJob
+Remove-Job -Job $sophosJob -Force
+Write-Host " done." -ForegroundColor Green
 #endregion Sophos Install
 
 

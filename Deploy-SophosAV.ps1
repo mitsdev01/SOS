@@ -1,3 +1,42 @@
+############################################################################################################
+#                                   SOS - Sophos AV Installer                                              #
+#                                           Version 1.0.5                                                  #
+############################################################################################################
+#region Synopsis
+<#
+.SYNOPSIS
+    Initiates computer rename and schedules the SOS baseline script to run after reboot.
+
+.DESCRIPTION
+    This script performs the following operations in sequence:
+    - Prompts the user to rename the computer
+    - Creates a scheduled task to run the SOS baseline script after the next login
+    - Triggers an automatic system reboot
+    
+    After reboot, the script will automatically launch the SOS baseline configuration
+    when the specified user logs in.
+
+.NOTES
+    Version:        1.0.5
+    Author:         Seth Gullion / Bill Ulrich
+    Creation Date:  4/4/2025
+    Requires:       Administrator privileges
+                    Windows 10/11 Professional
+    
+.EXAMPLE
+    .\Deploy-SophosAV.ps1
+    
+    Run the script with administrator privileges to install Sophos AV.
+
+.EXAMPLE
+    .\Deploy-SophosAV.ps1 
+
+    Select the related company from the dropdown list and click Install.
+
+.LINK
+    https://github.com/mitsdev01/SOS
+#>
+
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
@@ -63,7 +102,7 @@ $InstallerLinks.Add('Visiting Angels', "https://dzr-api-amzn-us-west-2-fa88.api-
 # Create the main form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Sophos AV Installer"
-$form.Size = New-Object System.Drawing.Size(500, 300)
+$form.Size = New-Object System.Drawing.Size(500, 200)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
