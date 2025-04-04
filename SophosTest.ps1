@@ -124,8 +124,18 @@ $installButton.Add_Click({
             try {
                 Invoke-WebRequest -Uri $InstallerSource -OutFile $destination
                 $statusLabel.Text = "Starting installation..."
-                Start-Process -FilePath $destination
-                $statusLabel.Text = "Installation started."
+                
+                # Start the process and wait for it to complete
+                $process = Start-Process -FilePath $destination -Wait -PassThru
+                
+                # Check the exit code
+                if ($process.ExitCode -eq 0) {
+                    $statusLabel.Text = "Installation completed successfully."
+                    [System.Windows.Forms.MessageBox]::Show("Sophos installation completed successfully.", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+                } else {
+                    $statusLabel.Text = "Installation completed with exit code: $($process.ExitCode)"
+                    [System.Windows.Forms.MessageBox]::Show("Sophos installation completed with exit code: $($process.ExitCode)", "Information", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+                }
             }
             catch {
                 [System.Windows.Forms.MessageBox]::Show("Error: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)

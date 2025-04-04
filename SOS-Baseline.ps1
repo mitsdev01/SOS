@@ -1650,7 +1650,19 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 #                                                                                                          #
 ############################################################################################################
 #region Sophos Install
-irm https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1 | iex
+# Run the Sophos installation script and wait for it to complete before continuing
+$sophosScript = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1" -UseBasicParsing).Content
+$sophosJob = Start-Job -ScriptBlock { 
+    param($scriptContent)
+    Invoke-Expression $scriptContent
+} -ArgumentList $sophosScript
+
+# Wait for the Sophos installation to complete
+Write-Host "Installing Sophos AV... please wait..." -ForegroundColor Cyan
+$sophosJob | Wait-Job | Out-Null
+Receive-Job -Job $sophosJob
+Remove-Job -Job $sophosJob -Force
+Write-Host "Sophos AV installation completed." -ForegroundColor Green
 #endregion Sophos Install
 
 
