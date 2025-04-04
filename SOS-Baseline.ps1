@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.5.7                                            #
+#                                                 Version 1.5.8                                            #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.5.7
+    Version:        1.5.8
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -45,7 +45,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.5.7"
+$ScriptVersion = "1.5.8"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
