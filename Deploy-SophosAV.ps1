@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                   SOS - Sophos AV Installer                                              #
-#                                           Version 1.0.5                                                  #
+#                                           Version 1.0.7                                                  #
 ############################################################################################################
 #region Synopsis
 <#
@@ -17,7 +17,7 @@
     when the specified user logs in.
 
 .NOTES
-    Version:        1.0.5
+    Version:        1.0.7
     Author:         Seth Gullion / Bill Ulrich
     Creation Date:  4/4/2025
     Requires:       Administrator privileges
@@ -39,6 +39,8 @@
 
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
+
+$ScriptVersion = "1.0.7"
 
 # Use OrderedDictionary instead of hashtable to maintain item order
 $InstallerLinks = New-Object Collections.Specialized.OrderedDictionary
