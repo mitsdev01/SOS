@@ -49,12 +49,19 @@ Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope Curr
 Install-Module PowerShellGet -Force -AllowClobber -Scope CurrentUser | Out-Null
 Import-Module PowerShellGet -Force
 
-# Restore the original execution policy
-Set-ExecutionPolicy $originalExecutionPolicy -Scope Process -Force
-
 # Verify NuGet installation
 if (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue) {
     Write-Output "NuGet package provider is installed successfully."
 } else {
     Write-Output "Failed to install NuGet package provider."
 }
+
+$ProgressPreference = 'SilentlyContinue'
+if (-not (Get-Module -ListAvailable -Name FancyClearHost)) {
+    Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted
+    Install-Module -Name FancyClearHost -Force
+}
+
+# Restore the original execution policy
+Set-ExecutionPolicy $originalExecutionPolicy -Scope Process -Force
+$ProgressPreference = 'Continue'

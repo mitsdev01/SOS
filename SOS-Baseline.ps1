@@ -55,7 +55,6 @@ $global:IsMobileDevice = $false
 
 Set-ExecutionPolicy RemoteSigned -Force *> $null
 
-
 # Set up termination handler for Ctrl+C and window closing
 $null = [Console]::TreatControlCAsInput = $true
 # Register termination handler
@@ -145,7 +144,6 @@ Add-Type -TypeDefinition @"
 # Clear console window
 Clear-Host
 
-
 ############################################################################################################
 #                                                 Functions                                                #
 #                                                                                                           #
@@ -155,6 +153,7 @@ function Print-Middle($Message, $Color = "White") {
     Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
     Write-Host -ForegroundColor $Color $Message
 }
+
 function Write-Delayed {
     param(
         [string]$Text, 
@@ -452,10 +451,6 @@ function Show-Spinner {
     [Console]::Write($SpinnerChars[$SpinnerIndex % $SpinnerChars.Length])
 }
 
-#endregion Functions
-
-# Start transcript logging with better handling
-# Add a function to start transcript with better error handling
 function Start-CleanTranscript {
     param (
         [string]$Path
@@ -477,9 +472,91 @@ function Start-CleanTranscript {
     }
 }
 
-# Call the function after the necessary variables are set
+function Start-VssService {
+    $vss = Get-Service -Name 'VSS' -ErrorAction SilentlyContinue
+    if ($vss.Status -ne 'Running') {
+        Write-Delayed "Starting Volume Shadow Copy service for restore point creation..." -NewLine:$false
+        Start-Service VSS
+        Write-TaskComplete
+    }
+}
+
+function Remove-RestorePointFrequencyLimit {
+    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
+    New-Item -Path $regPath -Force | Out-Null
+    Set-ItemProperty -Path $regPath -Name "SystemRestorePointCreationFrequency" -Value 0
+}
+
+function Create-RestorePoint-WithTimeout {
+    param (
+        [string]$Description,
+        [int]$TimeoutSeconds = 60
+    )
+
+    $job = Start-Job { Checkpoint-Computer -Description $using:Description -RestorePointType "MODIFY_SETTINGS" }
+    $completed = Wait-Job $job -Timeout $TimeoutSeconds
+
+    if (-not $completed) {
+        Write-Error "  [-] Restore point creation timed out after $TimeoutSeconds seconds. Stopping job..."
+        Stop-Job $job -Force
+        Remove-Job $job
+    } else {
+        Receive-Job $job
+        Write-Host "  [+] Restore point created successfully." -ForegroundColor Green
+        Remove-Job $job
+    }
+}
+
+function Start-CleanTranscript {
+    param (
+        [string]$Path
+    )
+    
+    try {
+        # Stop any existing transcript
+        try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
+        
+        # Start new transcript
+        Start-Transcript -Path $Path -Force -ErrorAction Stop
+        
+        # Don't write the header here anymore, it will be displayed in the Title Screen section
+        return $true
+    }
+    catch {
+        Write-Warning "Failed to start transcript: $_"
+        return $false
+    }
+}
+
+function Set-UsoSvcAutomatic {
+    try {
+        # Set service to Automatic
+        Set-Service -Name "UsoSvc" -StartupType Automatic
+        
+        # Start the service
+        Start-Service -Name "UsoSvc"
+        
+        # Verify the service status
+        $service = Get-Service -Name "UsoSvc"
+    }
+    catch {
+        Write-Error "Failed to configure UsoSvc: $($_.Exception.Message)"
+    }
+}
+
+#endregion Functions
+
+
+############################################################################################################
+#                                                Transcript Logging                                        #
+#                                                                                                          #
+############################################################################################################
+#region Logging
+# Start transcript logging  
 Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
 Clear-Host
+#endregion Logging
+
 ############################################################################################################
 #                                             Title Screen                                                 #
 #                                                                                                          #
@@ -503,7 +580,7 @@ Start-Sleep -Seconds 2
 # Start baseline
 
 # Baseline log file
-#Write-Log "Automated workstation baseline has started"
+Write-Log "Automated workstation baseline has started"
 
 # Check for required modules
 Write-Host "`nPreparing required modules..." -NoNewline
@@ -1425,7 +1502,7 @@ if ($O365) {
 } else {
     $OfficePath = "c:\temp\OfficeSetup.exe"
     if (-not (Test-Path $OfficePath)) {
-        $OfficeURL = "https://advancestuff.hostedrmm.com/labtech/transfer/installers/OfficeSetup.exe"
+        $OfficeURL = "https://axcientrestore.blob.core.windows.net/win11/OfficeSetup.exe"
         
         # Use spinner with progress bar for download
         Show-SpinnerWithProgressBar -Message "Downloading Microsoft Office 365..." -URL $OfficeURL -OutFile $OfficePath -DoneMessage " done."
@@ -1723,6 +1800,70 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
 
 #endregion DomainJoin
 
+############################################################################################################
+#                                           System Restore Point                                           #
+#                                                                                                          #
+############################################################################################################
+#region System Restore
+# Create a restore point
+Start-VssService
+Remove-RestorePointFrequencyLimit
+Write-Delayed "Creating a system restore point..." -NewLine:$false
+
+# Initialize spinner
+$spinner = @('/', '-', '\', '|')
+$spinnerIndex = 0
+[Console]::Write($spinner[$spinnerIndex])
+
+# Set up the job to create the restore point
+$job = Start-Job -ScriptBlock { 
+    Checkpoint-Computer -Description "MITS New Workstation Baseline Completed - $(Get-Date -Format 'MM-dd-yyyy HH:mm:t')" -RestorePointType "MODIFY_SETTINGS" 
+}
+
+# Display spinner while job is running (max 90 seconds)
+$timeout = 90
+$startTime = Get-Date
+$success = $false
+
+while (($job.State -eq 'Running') -and (((Get-Date) - $startTime).TotalSeconds -lt $timeout)) {
+    Start-Sleep -Milliseconds 100
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
+}
+
+# Check if job completed or timed out
+if ($job.State -eq 'Running') {
+    # Job timed out
+    Stop-Job $job
+    $success = $false
+} else {
+    # Job completed, check result
+    $result = Receive-Job $job
+    $success = $true
+}
+
+# Remove the job
+Remove-Job $job -Force
+
+# Clear the spinner character
+[Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+
+# Display result
+if ($success) {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write(" created successfully.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    Write-Log "System restore point created successfully"
+} else {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write(" Failed to create restore point.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    Write-Log "Failed to create system restore point"
+}
+#endregion System Restore Point
 
 ############################################################################################################
 #                                        Cleanup and Finalization                                        #
@@ -1750,21 +1891,6 @@ if ($service.Status -eq 'Running') {
 }
 
 # Installing Windows Updates
-function Set-UsoSvcAutomatic {
-    try {
-        # Set service to Automatic
-        Set-Service -Name "UsoSvc" -StartupType Automatic
-        
-        # Start the service
-        Start-Service -Name "UsoSvc"
-        
-        # Verify the service status
-        $service = Get-Service -Name "UsoSvc"
-    }
-    catch {
-        Write-Error "Failed to configure UsoSvc: $($_.Exception.Message)"
-    }
-}
 Write-Delayed "Checking for Windows Updates..." -NewLine:$false
 Set-UsoSvcAutomatic
 $ProgressPreference = 'SilentlyContinue'
@@ -1995,16 +2121,6 @@ else {
     }
 }
 
-# Create a restore point
-Write-Delayed "Creating a system restore point..." -NewLine:$false
-try {
-    Checkpoint-Computer -Description "SOS Baseline Completed" -RestorePointType "APPLICATION_INSTALL" -ErrorAction Stop
-    Write-TaskComplete
-    Write-Log "System restore point created successfully`r"
-} catch {
-    Write-Host "An error occurred: $_" -ForegroundColor Red
-    Write-Log "Error creating system restore point: $_"
-}
 
 # Define temp files to clean up
 $TempFiles = @(
@@ -2014,7 +2130,8 @@ $TempFiles = @(
     "c:\temp\BaselineComplete.ps1",
     "c:\temp\DRMM-Install.log",
     "C:\temp\AcroRdrDC2500120432_en_US.exe",
-    "c:\temp\$env:COMPUTERNAME-baseline.txt"
+    "c:\temp\$env:COMPUTERNAME-baseline.txt",
+    "c:\temp\sos-rename-complete.flag"
 )
 
 Write-Delayed "Cleaning up temporary files..." -NewLine:$false
@@ -2098,4 +2215,5 @@ $footerBorder
 Add-Content -Path $LogFile -Value $footer
 
 Read-Host -Prompt "Press enter to exit"
+Clear-HostFancily -Mode Falling -Speed 3.0
 Stop-Process -Id $PID -Force
