@@ -54,7 +54,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 $ScriptVersion = "1.0.5"
 
-Start-Transcript -Path "c:\temp\baseline-launcher.log"
+#Start-Transcript -Path "c:\temp\baseline-launcher.log"
 
 # Create a temporary directory if it doesn't exist
 $tempFolder = "C:\temp"
@@ -389,7 +389,7 @@ try {
     Write-Host ""
     
     # Restart the computer
-    Stop-Transcript | Out-Null
+    #Stop-Transcript | Out-Null
     Restart-Computer -Force
 
 } catch {
