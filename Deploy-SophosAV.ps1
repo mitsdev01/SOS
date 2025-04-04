@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                   SOS - Sophos AV Installer                                              #
-#                                           Version 1.0.5                                                  #
+#                                           Version 1.0.6                                                  #
 ############################################################################################################
 #region Synopsis
 <#
@@ -17,7 +17,7 @@
     when the specified user logs in.
 
 .NOTES
-    Version:        1.0.5
+    Version:        1.0.6
     Author:         Seth Gullion / Bill Ulrich
     Creation Date:  4/4/2025
     Requires:       Administrator privileges
@@ -39,6 +39,8 @@
 
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
+
+$ScriptVersion = "1.0.6"
 
 # Use OrderedDictionary instead of hashtable to maintain item order
 $InstallerLinks = New-Object Collections.Specialized.OrderedDictionary
@@ -148,6 +150,7 @@ $installButton.Add_Click({
         # If Sophos is already installed, show message
         If ($SophosInstalled) {
             [System.Windows.Forms.MessageBox]::Show("Sophos is already installed.", "Information", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            $form.Close()
         } 
         Else {
             $statusLabel.Text = "Beginning the installation..."
@@ -163,8 +166,26 @@ $installButton.Add_Click({
             try {
                 Invoke-WebRequest -Uri $InstallerSource -OutFile $destination
                 $statusLabel.Text = "Starting installation..."
-                Start-Process -FilePath $destination
-                $statusLabel.Text = "Installation started."
+                
+                # Start the Sophos installer process and wait for it to complete
+                $process = Start-Process -FilePath $destination -PassThru
+                
+                # Create a timer to check if the Sophos installer process has exited
+                $timer = New-Object System.Windows.Forms.Timer
+                $timer.Interval = 2000  # Check every 2 seconds
+                $timer.Add_Tick({
+                    # Check if the process has exited
+                    if ($process.HasExited -or (Get-Process -Id $process.Id -ErrorAction SilentlyContinue) -eq $null) {
+                        $statusLabel.Text = "Installation completed"
+                        $timer.Stop()
+                        $timer.Dispose()
+                        # Wait a moment before closing
+                        Start-Sleep -Seconds 1
+                        $form.Close()
+                    }
+                })
+                $timer.Start()
+                $statusLabel.Text = "Installing Sophos. Please wait..."
             }
             catch {
                 [System.Windows.Forms.MessageBox]::Show("Error: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
