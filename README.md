@@ -119,10 +119,6 @@ Automates the process of checking for and installing Windows updates using the P
 
 Ensures all required PowerShell modules are properly installed and configured.
 
-### Deploy-SophosConnect.ps1
-
-Automates the deployment and configuration of Sophos Connect VPN client.
-
 
 ## Troubleshooting
 
