@@ -96,7 +96,7 @@ Access it directly via: `irm bit.ly/sos-baseline | iex`
 
 ### Deploy-SophosAV.ps1
 Select client name, click 'Install' to initiate the download & installation of Sophos Endpoint Protection.
-![Launcher Screenshot](images/SOS-Sophos.gif)
+![Launcher Screenshot](images/SOS-SophosDeployment3.gif)
 
 ### BaselineComplete.ps1
 
@@ -118,10 +118,6 @@ Automates the process of checking for and installing Windows updates using the P
 ### Check-Modules.ps1
 
 Ensures all required PowerShell modules are properly installed and configured.
-
-### Deploy-SophosConnect.ps1
-
-Automates the deployment and configuration of Sophos Connect VPN client.
 
 
 ## Troubleshooting
