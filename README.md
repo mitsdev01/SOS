@@ -95,7 +95,7 @@ Access it directly via: `irm bit.ly/sos-baseline | iex`
 ![Launcher Screenshot](images/SOS-Baseline.gif)
 
 ### Deploy-SophosAV.ps1
-Select the desired client and click install to initiate the download and silent installation of Sophos Endpoint Protection.
+Select the desired customer and click 'Install' to initiate the silent download & installation of Sophos Endpoint Protection.
 ![Launcher Screenshot](images/SOS-Sophos.gif)
 
 ### BaselineComplete.ps1
