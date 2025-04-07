@@ -41,6 +41,7 @@ Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $ScriptVersion = "1.0.8"
+$ProgressPreference = 'SilentlyContinue'
 
 # Use OrderedDictionary instead of hashtable to maintain item order
 $InstallerLinks = New-Object Collections.Specialized.OrderedDictionary
@@ -163,7 +164,44 @@ $installButton.Add_Click({
             # Download the installer
             $statusLabel.Text = "Downloading installer..."
             try {
-                Invoke-WebRequest -Uri $InstallerSource -OutFile $destination
+                # Create a spinner for download progress
+                $spinChars = '/', '-', '\', '|'
+                $spinIndex = 0
+                $downloadJob = Start-Job -ScriptBlock {
+                    param($source, $dest)
+                    # Set progress preference in job scope
+                    $ProgressPreference = 'SilentlyContinue'
+                    try {
+                        Invoke-WebRequest -Uri $source -OutFile $dest
+                    }
+                    catch {
+                        Write-Error $_.Exception.Message
+                        return $false
+                    }
+                    return $true
+                } -ArgumentList $InstallerSource, $destination
+
+                # Monitor download progress with spinner
+                while ($downloadJob.State -eq 'Running' -or $downloadJob.State -eq 'Completing') {
+                    $statusLabel.Text = "Downloading installer...$($spinChars[$spinIndex])"
+                    $spinIndex = ($spinIndex + 1) % 4
+                    Start-Sleep -Milliseconds 50
+                    [System.Windows.Forms.Application]::DoEvents()
+                }
+
+                # Wait for download to complete and clear spinner
+                Wait-Job $downloadJob
+                $result = Receive-Job $downloadJob
+                Remove-Job $downloadJob
+
+                # Verify the file exists and has content
+                if (!$result -or !(Test-Path $destination) -or (Get-Item $destination).Length -eq 0) {
+                    throw "Download failed or file is empty"
+                }
+
+                # Restore progress preference
+                $ProgressPreference = 'Continue'
+
                 $statusLabel.Text = "Initializing Sophos installation..."
                 Start-Process -FilePath $destination -ArgumentList "--quiet"
                 $statusLabel.Text = "Installing Sophos Endpoint Protection..."
@@ -280,8 +318,8 @@ $installButton.Add_Click({
                                 $completionMessage = @"
 Sophos Endpoint Protection Installation Complete
 
-√ Installation completed successfully
-√ All services configured and running
+Installation completed successfully √
+All services configured and running √
 
 Your system is now protected by Sophos Endpoint Security.
 "@
@@ -314,16 +352,28 @@ Your system is now protected by Sophos Endpoint Security.
                                 $autoCloseTimer.Add_Tick({
                                     try {
                                         $autoCloseTimer.Stop()
-                                        # Use BeginInvoke to avoid deadlock
+                                        # Close completion form first
                                         $completionForm.BeginInvoke([Action]{
                                             $completionForm.Close()
                                         })
-                                        $form.BeginInvoke([Action]{
-                                            $form.Close()
+                                        
+                                        # Create a second timer for main form closure
+                                        $mainFormTimer = New-Object System.Windows.Forms.Timer
+                                        $mainFormTimer.Interval = 5000  # 5 seconds
+                                        $mainFormTimer.Add_Tick({
+                                            try {
+                                                $mainFormTimer.Stop()
+                                                $form.BeginInvoke([Action]{
+                                                    $form.Close()
+                                                })
+                                                Start-Sleep -Milliseconds 500
+                                                [System.Windows.Forms.Application]::Exit()
+                                            }
+                                            catch {
+                                                [System.Windows.Forms.Application]::Exit()
+                                            }
                                         })
-                                        # Schedule the exit after forms are closed
-                                        Start-Sleep -Milliseconds 500
-                                        [System.Windows.Forms.Application]::Exit()
+                                        $mainFormTimer.Start()
                                     }
                                     catch {
                                         # Silently exit if forms are already closed
