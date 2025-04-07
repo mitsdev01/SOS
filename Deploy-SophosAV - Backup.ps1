@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                   SOS - Sophos AV Installer                                              #
-#                                           Version 1.0.8                                                  #
+#                                           Version 1.0.7                                                  #
 ############################################################################################################
 #region Synopsis
 <#
@@ -17,7 +17,7 @@
     when the specified user logs in.
 
 .NOTES
-    Version:        1.0.8
+    Version:        1.0.7
     Author:         Seth Gullion / Bill Ulrich
     Creation Date:  4/4/2025
     Requires:       Administrator privileges
@@ -40,7 +40,7 @@
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$ScriptVersion = "1.0.8"
+$ScriptVersion = "1.0.7"
 
 # Use OrderedDictionary instead of hashtable to maintain item order
 $InstallerLinks = New-Object Collections.Specialized.OrderedDictionary
@@ -165,34 +165,8 @@ $installButton.Add_Click({
             try {
                 Invoke-WebRequest -Uri $InstallerSource -OutFile $destination
                 $statusLabel.Text = "Starting installation..."
-                Start-Process -FilePath $destination 
+                #Start-Process -FilePath $destination -ArgumentList "--quiet"
                 $statusLabel.Text = "Installation started."
-                
-                # Function to monitor Sophos installation processes
-                function Wait-ForSophosInstallation {
-                    $processes = @("Setup", "SophosSetup", "SophosSetup_Stage2")
-                    $running = $true
-                    
-                    while ($running) {
-                        $running = $false
-                        foreach ($process in $processes) {
-                            if (Get-Process -Name $process -ErrorAction SilentlyContinue) {
-                                $running = $true
-                                break
-                            }
-                        }
-                        if ($running) {
-                            Start-Sleep -Seconds 5
-                        }
-                    }
-                }
-                
-                # Start monitoring in a background job
-                $monitorJob = Start-Job -ScriptBlock {
-                    param($statusLabel)
-                    Wait-ForSophosInstallation
-                    $statusLabel.Text = "Installation Complete!"
-                } -ArgumentList $statusLabel
             }
             catch {
                 [System.Windows.Forms.MessageBox]::Show("Error: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
