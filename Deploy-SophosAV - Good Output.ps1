@@ -171,16 +171,13 @@ $installButton.Add_Click({
                 # Create script-level variables for job monitoring
                 $script:monitorJob = $null
                 $script:timer = New-Object System.Windows.Forms.Timer
-                $script:timer.Interval = 25  # Check every 25ms instead of 1000ms
+                $script:timer.Interval = 1000  # Check every second
                 
                 # Start monitoring in a background job
                 $script:monitorJob = Start-Job -ScriptBlock {
                     $processes = @("Setup", "SophosSetup", "SophosSetup_Stage2")
                     $running = $true
                     $installComplete = $false
-                    $spinChars = '/', '-', '\', '|'
-                   
-                    $spinIndex = 0
                     
                     # List of expected Sophos services
                     $sophosServices = @(
@@ -198,39 +195,23 @@ $installButton.Add_Click({
                         
                         # If processes are done, verify installation
                         if (-not $running -and -not $installComplete) {
-                            # Wait while showing spinner animation
-                            $waitStart = Get-Date
-                            while (((Get-Date) - $waitStart).TotalSeconds -lt 30) {
-                                Write-Output @{
-                                    Status = "Progress"
-                                    Message = "Waiting for services to initialize...$($spinChars[$spinIndex])"
-                                }
-                                $spinIndex = ($spinIndex + 1) % 4
-                                Start-Sleep -Milliseconds 50
-                            }
+                            # Wait a bit to ensure services have time to start
+                            Start-Sleep -Seconds 30
                             
                             # Check installation path
                             $installPath = Test-Path "C:\Program Files\Sophos"
                             if (-not $installPath) {
                                 Write-Output @{
                                     Status = "Progress"
-                                    Message = "Verifying Sophos installation...$($spinChars[$spinIndex])"
+                                    Message = "Preparing Sophos installation..."
                                 }
-                                $spinIndex = ($spinIndex + 1) % 4
-                                Start-Sleep -Milliseconds 50
+                                Start-Sleep -Seconds 15
                                 continue
                             }
                             
                             # Check if all required services are running
                             $serviceStatus = @()
                             foreach ($serviceName in $sophosServices) {
-                                Write-Output @{
-                                    Status = "Progress"
-                                    Message = "Verifying Sophos services...$($spinChars[$spinIndex])"
-                                }
-                                $spinIndex = ($spinIndex + 1) % 4
-                                Start-Sleep -Milliseconds 50
-                                
                                 $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
                                 if ($service) {
                                     $serviceStatus += @{
@@ -253,18 +234,17 @@ $installButton.Add_Click({
                             } else {
                                 Write-Output @{
                                     Status = "Progress"
-                                    Message = "Waiting for services to start...$($spinChars[$spinIndex])"
+                                    Message = "Configuring Sophos services... ($($runningServices.Count) of $($sophosServices.Count))"
+                                    Services = $serviceStatus
                                 }
-                                $spinIndex = ($spinIndex + 1) % 4
-                                Start-Sleep -Milliseconds 50
+                                Start-Sleep -Seconds 15
                             }
                         } else {
                             Write-Output @{
                                 Status = "Progress"
-                                Message = "Installing Sophos Endpoint Protection...$($spinChars[$spinIndex])"
+                                Message = "Installing Sophos Endpoint Protection..."
                             }
-                            $spinIndex = ($spinIndex + 1) % 4
-                            Start-Sleep -Milliseconds 50
+                            Start-Sleep -Seconds 15
                         }
                     }
                 }
@@ -274,68 +254,22 @@ $installButton.Add_Click({
                     if ($script:monitorJob -and $script:monitorJob.State -eq "Completed") {
                         $result = Receive-Job -Job $script:monitorJob
                         if ($result.Status -eq "Complete") {
-                            # Ensure we're on the UI thread for all form operations
-                            $form.Invoke([Action]{
-                                $statusLabel.Text = "Installation Complete!"
-                                $completionMessage = @"
+                            $statusLabel.Text = "Installation Complete!"
+                            $completionMessage = @"
 Sophos Endpoint Protection Installation Complete
 
-√ Installation completed successfully
-√ All services configured and running
+✓ Installation successful
+✓ All services configured and running
+✓ System protected
 
 Your system is now protected by Sophos Endpoint Security.
 "@
-                                # Create a completion form
-                                $completionForm = New-Object System.Windows.Forms.Form
-                                $completionForm.Text = "Installation Complete"
-                                $completionForm.Size = New-Object System.Drawing.Size(400, 200)
-                                $completionForm.StartPosition = "CenterScreen"
-                                $completionForm.FormBorderStyle = "FixedDialog"
-                                $completionForm.MaximizeBox = $false
-
-                                # Create a label for the completion message
-                                $completionLabel = New-Object System.Windows.Forms.Label
-                                $completionLabel.Location = New-Object System.Drawing.Point(20, 20)
-                                $completionLabel.Size = New-Object System.Drawing.Size(360, 100)
-                                $completionLabel.Text = $completionMessage
-                                $completionForm.Controls.Add($completionLabel)
-
-                                # Create an OK button
-                                $okButton = New-Object System.Windows.Forms.Button
-                                $okButton.Location = New-Object System.Drawing.Point(150, 130)
-                                $okButton.Size = New-Object System.Drawing.Size(100, 30)
-                                $okButton.Text = "OK"
-                                $okButton.Add_Click({ $completionForm.Close() })
-                                $completionForm.Controls.Add($okButton)
-
-                                # Create a timer for auto-closing
-                                $autoCloseTimer = New-Object System.Windows.Forms.Timer
-                                $autoCloseTimer.Interval = 30000  # 30 seconds
-                                $autoCloseTimer.Add_Tick({
-                                    try {
-                                        $autoCloseTimer.Stop()
-                                        # Use BeginInvoke to avoid deadlock
-                                        $completionForm.BeginInvoke([Action]{
-                                            $completionForm.Close()
-                                        })
-                                        $form.BeginInvoke([Action]{
-                                            $form.Close()
-                                        })
-                                        # Schedule the exit after forms are closed
-                                        Start-Sleep -Milliseconds 500
-                                        [System.Windows.Forms.Application]::Exit()
-                                    }
-                                    catch {
-                                        # Silently exit if forms are already closed
-                                        [System.Windows.Forms.Application]::Exit()
-                                    }
-                                })
-                                $autoCloseTimer.Start()
-
-                                # Show the completion form
-                                $completionForm.ShowDialog()
-                            })
-
+                            [System.Windows.Forms.MessageBox]::Show(
+                                $completionMessage,
+                                "Installation Complete",
+                                [System.Windows.Forms.MessageBoxButtons]::OK,
+                                [System.Windows.Forms.MessageBoxIcon]::Information
+                            )
                             $script:timer.Stop()
                             Remove-Job -Job $script:monitorJob
                             $script:monitorJob = $null
@@ -343,9 +277,7 @@ Your system is now protected by Sophos Endpoint Security.
                     } elseif ($script:monitorJob) {
                         $result = Receive-Job -Job $script:monitorJob -Keep
                         if ($result -and $result[-1].Status -eq "Progress") {
-                            $form.Invoke([Action]{
-                                $statusLabel.Text = $result[-1].Message
-                            })
+                            $statusLabel.Text = $result[-1].Message
                         }
                     }
                 })
@@ -375,7 +307,6 @@ $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Location = New-Object System.Drawing.Point(20, 130)
 $statusLabel.Size = New-Object System.Drawing.Size(440, 20)
 $statusLabel.Text = "Ready"
-$statusLabel.Font = New-Object System.Drawing.Font("Consolas", 9)
 $form.Controls.Add($statusLabel)
 
 # Create an Exit button
