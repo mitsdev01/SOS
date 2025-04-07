@@ -70,7 +70,7 @@ This will perform the complete baseline process including:
 - Windows Update configuration
 - Software installation
 - System hardening
-- Bloatware removal
+- Bloatware removal 
 
 
 ## Script Breakdown
@@ -95,7 +95,7 @@ Access it directly via: `irm bit.ly/sos-baseline | iex`
 ![Launcher Screenshot](images/SOS-Baseline.gif)
 
 ### Deploy-SophosAV.ps1
-Select the desired customer and click 'Install' to initiate the silent download & installation of Sophos Endpoint Protection.
+Select the customer and click 'Install' to initiate the silent download & installation of Sophos Endpoint Protection.
 ![Launcher Screenshot](images/SOS-Sophos.gif)
 
 ### BaselineComplete.ps1
