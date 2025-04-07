@@ -1651,6 +1651,8 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 ############################################################################################################
 #region Sophos Install
 # Run the Sophos installation script and wait for it to complete before continuing
+$ProgressPreference = "SilentlyContinue"
+Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
 $sophosScript = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1" -UseBasicParsing).Content
 $sophosJob = Start-Job -ScriptBlock { 
     param($scriptContent)
@@ -1705,7 +1707,8 @@ Write-Host " done." -ForegroundColor Green -NoNewline
 # Retrieve and remove the job
 Receive-Job -Job $sophosJob
 Remove-Job -Job $sophosJob -Force
-
+Remove-item -path "C:\temp\SEPLinks.enc" | Out-Null
+$ProgressPreference = "Continue"
 # Start a new line
 Write-Host ""
 #endregion Sophos Install
