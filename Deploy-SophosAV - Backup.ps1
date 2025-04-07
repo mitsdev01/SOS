@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                   SOS - Sophos AV Installer                                              #
-#                                           Version 1.0.8                                                  #
+#                                           Version 1.0.7                                                  #
 ############################################################################################################
 #region Synopsis
 <#
@@ -17,7 +17,7 @@
     when the specified user logs in.
 
 .NOTES
-    Version:        1.0.8
+    Version:        1.0.7
     Author:         Seth Gullion / Bill Ulrich
     Creation Date:  4/4/2025
     Requires:       Administrator privileges
@@ -40,7 +40,7 @@
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$ScriptVersion = "1.0.8"
+$ScriptVersion = "1.0.7"
 
 # Use OrderedDictionary instead of hashtable to maintain item order
 $InstallerLinks = New-Object Collections.Specialized.OrderedDictionary
@@ -164,203 +164,13 @@ $installButton.Add_Click({
             $statusLabel.Text = "Downloading installer..."
             try {
                 Invoke-WebRequest -Uri $InstallerSource -OutFile $destination
-                $statusLabel.Text = "Initializing Sophos installation..."
-                Start-Process -FilePath $destination -ArgumentList "--quiet"
-                $statusLabel.Text = "Installing Sophos Endpoint Protection..."
-                
-                # Create script-level variables for job monitoring
-                $script:monitorJob = $null
-                $script:timer = New-Object System.Windows.Forms.Timer
-                $script:timer.Interval = 25  # Check every 25ms instead of 1000ms
-                
-                # Start monitoring in a background job
-                $script:monitorJob = Start-Job -ScriptBlock {
-                    $processes = @("Setup", "SophosSetup", "SophosSetup_Stage2")
-                    $running = $true
-                    $installComplete = $false
-                    $spinChars = '/', '-', '\', '|'
-                   
-                    $spinIndex = 0
-                    
-                    # List of expected Sophos services
-                    $sophosServices = @(
-                        "Sophos MCS Agent",
-                        "Sophos Endpoint Defense Service",
-                        "Sophos File Scanner Service",
-                        "Sophos Network Threat Protection",
-                        "Sophos System Protection Service"
-                    )
-                    
-                    while ($running -or -not $installComplete) {
-                        # Check if any setup processes are still running
-                        $processesRunning = @(Get-Process | Where-Object { $processes -contains $_.Name } -ErrorAction SilentlyContinue)
-                        $running = $processesRunning.Count -gt 0
-                        
-                        # If processes are done, verify installation
-                        if (-not $running -and -not $installComplete) {
-                            # Wait while showing spinner animation
-                            $waitStart = Get-Date
-                            while (((Get-Date) - $waitStart).TotalSeconds -lt 30) {
-                                Write-Output @{
-                                    Status = "Progress"
-                                    Message = "Waiting for services to initialize...$($spinChars[$spinIndex])"
-                                }
-                                $spinIndex = ($spinIndex + 1) % 4
-                                Start-Sleep -Milliseconds 50
-                            }
-                            
-                            # Check installation path
-                            $installPath = Test-Path "C:\Program Files\Sophos"
-                            if (-not $installPath) {
-                                Write-Output @{
-                                    Status = "Progress"
-                                    Message = "Verifying Sophos installation...$($spinChars[$spinIndex])"
-                                }
-                                $spinIndex = ($spinIndex + 1) % 4
-                                Start-Sleep -Milliseconds 50
-                                continue
-                            }
-                            
-                            # Check if all required services are running
-                            $serviceStatus = @()
-                            foreach ($serviceName in $sophosServices) {
-                                Write-Output @{
-                                    Status = "Progress"
-                                    Message = "Verifying Sophos services...$($spinChars[$spinIndex])"
-                                }
-                                $spinIndex = ($spinIndex + 1) % 4
-                                Start-Sleep -Milliseconds 50
-                                
-                                $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-                                if ($service) {
-                                    $serviceStatus += @{
-                                        Name = $serviceName
-                                        Status = $service.Status
-                                    }
-                                }
-                            }
-                            
-                            # Count running services
-                            $runningServices = $serviceStatus | Where-Object { $_.Status -eq 'Running' }
-                            
-                            if ($runningServices.Count -eq $sophosServices.Count) {
-                                $installComplete = $true
-                                Write-Output @{
-                                    Status = "Complete"
-                                    Message = "Installation Complete!"
-                                    Services = $serviceStatus
-                                }
-                            } else {
-                                Write-Output @{
-                                    Status = "Progress"
-                                    Message = "Waiting for services to start...$($spinChars[$spinIndex])"
-                                }
-                                $spinIndex = ($spinIndex + 1) % 4
-                                Start-Sleep -Milliseconds 50
-                            }
-                        } else {
-                            Write-Output @{
-                                Status = "Progress"
-                                Message = "Installing Sophos Endpoint Protection...$($spinChars[$spinIndex])"
-                            }
-                            $spinIndex = ($spinIndex + 1) % 4
-                            Start-Sleep -Milliseconds 50
-                        }
-                    }
-                }
-
-                # Add timer event handler
-                $script:timer.Add_Tick({
-                    if ($script:monitorJob -and $script:monitorJob.State -eq "Completed") {
-                        $result = Receive-Job -Job $script:monitorJob
-                        if ($result.Status -eq "Complete") {
-                            # Ensure we're on the UI thread for all form operations
-                            $form.Invoke([Action]{
-                                $statusLabel.Text = "Installation Complete!"
-                                $completionMessage = @"
-Sophos Endpoint Protection Installation Complete
-
-√ Installation completed successfully
-√ All services configured and running
-
-Your system is now protected by Sophos Endpoint Security.
-"@
-                                # Create a completion form
-                                $completionForm = New-Object System.Windows.Forms.Form
-                                $completionForm.Text = "Installation Complete"
-                                $completionForm.Size = New-Object System.Drawing.Size(400, 200)
-                                $completionForm.StartPosition = "CenterScreen"
-                                $completionForm.FormBorderStyle = "FixedDialog"
-                                $completionForm.MaximizeBox = $false
-
-                                # Create a label for the completion message
-                                $completionLabel = New-Object System.Windows.Forms.Label
-                                $completionLabel.Location = New-Object System.Drawing.Point(20, 20)
-                                $completionLabel.Size = New-Object System.Drawing.Size(360, 100)
-                                $completionLabel.Text = $completionMessage
-                                $completionForm.Controls.Add($completionLabel)
-
-                                # Create an OK button
-                                $okButton = New-Object System.Windows.Forms.Button
-                                $okButton.Location = New-Object System.Drawing.Point(150, 130)
-                                $okButton.Size = New-Object System.Drawing.Size(100, 30)
-                                $okButton.Text = "OK"
-                                $okButton.Add_Click({ $completionForm.Close() })
-                                $completionForm.Controls.Add($okButton)
-
-                                # Create a timer for auto-closing
-                                $autoCloseTimer = New-Object System.Windows.Forms.Timer
-                                $autoCloseTimer.Interval = 30000  # 30 seconds
-                                $autoCloseTimer.Add_Tick({
-                                    try {
-                                        $autoCloseTimer.Stop()
-                                        # Use BeginInvoke to avoid deadlock
-                                        $completionForm.BeginInvoke([Action]{
-                                            $completionForm.Close()
-                                        })
-                                        $form.BeginInvoke([Action]{
-                                            $form.Close()
-                                        })
-                                        # Schedule the exit after forms are closed
-                                        Start-Sleep -Milliseconds 500
-                                        [System.Windows.Forms.Application]::Exit()
-                                    }
-                                    catch {
-                                        # Silently exit if forms are already closed
-                                        [System.Windows.Forms.Application]::Exit()
-                                    }
-                                })
-                                $autoCloseTimer.Start()
-
-                                # Show the completion form
-                                $completionForm.ShowDialog()
-                            })
-
-                            $script:timer.Stop()
-                            Remove-Job -Job $script:monitorJob
-                            $script:monitorJob = $null
-                        }
-                    } elseif ($script:monitorJob) {
-                        $result = Receive-Job -Job $script:monitorJob -Keep
-                        if ($result -and $result[-1].Status -eq "Progress") {
-                            $form.Invoke([Action]{
-                                $statusLabel.Text = $result[-1].Message
-                            })
-                        }
-                    }
-                })
-
-                # Start the timer
-                $script:timer.Start()
+                $statusLabel.Text = "Starting installation..."
+                #Start-Process -FilePath $destination -ArgumentList "--quiet"
+                $statusLabel.Text = "Installation started."
             }
             catch {
-                [System.Windows.Forms.MessageBox]::Show(
-                    "An error occurred during the Sophos installation process. Please try again or contact support.",
-                    "Installation Error",
-                    [System.Windows.Forms.MessageBoxButtons]::OK,
-                    [System.Windows.Forms.MessageBoxIcon]::Error
-                )
-                $statusLabel.Text = "Installation failed. Please try again."
+                [System.Windows.Forms.MessageBox]::Show("Error: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+                $statusLabel.Text = "Installation failed."
             }
         }
     }
@@ -375,7 +185,6 @@ $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Location = New-Object System.Drawing.Point(20, 130)
 $statusLabel.Size = New-Object System.Drawing.Size(440, 20)
 $statusLabel.Text = "Ready"
-$statusLabel.Font = New-Object System.Drawing.Font("Consolas", 9)
 $form.Controls.Add($statusLabel)
 
 # Create an Exit button

@@ -94,6 +94,10 @@ The primary script that performs all baseline operations. It includes comprehens
 Access it directly via: `irm bit.ly/sos-baseline | iex`
 ![Launcher Screenshot](images/SOS-Baseline.gif)
 
+### Deploy-SophosAV.ps1
+
+
+
 ### BaselineComplete.ps1
 
 Generates a detailed verification report showing the current state of a workstation, including:
