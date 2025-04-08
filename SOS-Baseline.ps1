@@ -687,6 +687,8 @@ catch {
     Write-Log "Module check failed: $($_.Exception.Message)"
 }
 
+$ProgressPreference = "SilentlyContinue"
+Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/url.enc" -OutFile "c:\temp\url.enc" | Out-Null
 
 ############################################################################################################
 #                                            Wakelock Configuration                                        #
@@ -1694,8 +1696,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 ############################################################################################################
 #region Sophos Install
 # Run the Sophos installation script and wait for it to complete before continuing
-$ProgressPreference = "SilentlyContinue"
-Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/url.enc" -OutFile "c:\temp\url.enc" | Out-Null
+
 $sophosScript = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1" -UseBasicParsing).Content
 $sophosJob = Start-Job -ScriptBlock { 
     param($scriptContent)
