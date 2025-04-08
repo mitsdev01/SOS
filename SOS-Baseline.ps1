@@ -689,6 +689,7 @@ catch {
 
 $ProgressPreference = "SilentlyContinue"
 Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/url.enc" -OutFile "c:\temp\url.enc" | Out-Null
+Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
 
 ############################################################################################################
 #                                            Wakelock Configuration                                        #
