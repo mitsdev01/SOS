@@ -626,7 +626,39 @@ Start-Sleep -Seconds 2
 Write-Log "Automated workstation baseline has started"
 
 $ProgressPreference = "SilentlyContinue"
-Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
+Write-Delayed "Downloading installer links..." -NewLine:$false
+try {
+    # Create temp directory if it doesn't exist
+    if (-not (Test-Path "C:\temp")) {
+        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
+    }
+    
+    # Download the encrypted links file
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop
+    
+    # Verify file exists and has content
+    if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
+        throw "Failed to download encrypted links file"
+    }
+    
+    $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
+    if ($fileSize -eq 0) {
+        throw "Downloaded encrypted links file is empty"
+    }
+    
+    Write-TaskComplete
+    Write-Log "Successfully downloaded installer links"
+}
+catch {
+    Write-TaskFailed
+    Write-Log "Failed to download installer links: $_"
+    [System.Windows.Forms.MessageBox]::Show(
+        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
+        "Download Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+}
 
 # Check for required modules
 Write-Host "`nPreparing required modules..." -NoNewline
@@ -1396,7 +1428,6 @@ $file = "$TempFolder\AgentInstall.exe"
 
 $agentName = "CagService"
 $agentPath = "C:\Program Files (x86)\CentraStage"
-https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1
 
 # Check for existing Datto RMM agent
 $installStatus = Test-DattoInstallation
@@ -2332,3 +2363,7 @@ Add-Content -Path $LogFile -Value $footer
 Read-Host -Prompt "Press enter to exit"
 Clear-HostFancily -Mode Falling -Speed 3.0
 Stop-Process -Id $PID -Force
+
+# Cleanup section
+Remove-item -path "C:\temp\SEPLinks.enc" -ErrorAction SilentlyContinue | Out-Null
+$ProgressPreference = "Continue"
