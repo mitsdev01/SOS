@@ -149,7 +149,7 @@ function Get-DecryptedURL {
     
     try {
         # Read the encrypted file
-        $encryptedBytes = [System.IO.File]::ReadAllBytes("c:\temp\url.enc")
+        $encryptedBytes = [System.IO.File]::ReadAllBytes("c:\temp\SEPLinks.enc")
         
         # Extract key, IV, and encrypted data
         $keyBytes = $encryptedBytes[0..31]
@@ -688,7 +688,7 @@ catch {
 }
 
 $ProgressPreference = "SilentlyContinue"
-Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/url.enc" -OutFile "c:\temp\url.enc" | Out-Null
+#Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/url.enc" -OutFile "c:\temp\url.enc" | Out-Null
 Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
 
 ############################################################################################################
