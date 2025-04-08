@@ -7,15 +7,7 @@ function Encrypt-InstallerLinks {
     # Create the installer links dictionary
     $InstallerLinks = New-Object Collections.Specialized.OrderedDictionary
 
-    # Add baseline script URLs
-    $InstallerLinks.Add('Office365', "https://axcientrestore.blob.core.windows.net/win11/OfficeSetup.exe")
-    $InstallerLinks.Add('AdobeAcrobat', "https://axcientrestore.blob.core.windows.net/win11/AcroRdrDC2500120432_en_US.exe")
-    $InstallerLinks.Add('Win11Debloat', "https://axcientrestore.blob.core.windows.net/win11/SOS-Debloat.zip")
-    $InstallerLinks.Add('Win10Debloat', "https://axcientrestore.blob.core.windows.net/win11/SOS-Debloat.zip")
-    $InstallerLinks.Add('WindowsUpdate', "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Update_Windows.ps1")
-    $InstallerLinks.Add('BaselineComplete', "https://raw.githubusercontent.com/mitsdev01/SOS/main/BaselineComplete.ps1")
-
-    # Add Sophos installer links
+    # Add all installer links
     $InstallerLinks.Add('Atlanta Family Law Immigration', "https://api-cloudstation-us-east-2.prod.hydra.sophos.com/api/download/7e0de62726ddb7f47ed8458fd0b3b41d/SophosSetup.exe")
     $InstallerLinks.Add('Affiliated Resources Group', "https://api-cloudstation-us-east-2.prod.hydra.sophos.com/api/download/fdcc52e2a8c06d03db0c0868d010a4ff/SophosSetup.exe")
     $InstallerLinks.Add('Alex Rousch', "https://api-cloudstation-us-east-2.prod.hydra.sophos.com/api/download/4aae93e82d96bc5eafd0698fa31c1d29/SophosSetup.exe")
@@ -77,34 +69,18 @@ function Encrypt-InstallerLinks {
     # Convert the JSON to bytes
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 
-    # Generate a random key and IV
-    $key = New-Object byte[] 32
-    $iv = New-Object byte[] 16
-    $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
-    $rng.GetBytes($key)
-    $rng.GetBytes($iv)
-
-    # Create the AES encryption object
-    $aes = New-Object System.Security.Cryptography.AesManaged
-    $aes.Key = $key
-    $aes.IV = $iv
-    $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-    $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-
-    # Create the encryptor
-    $encryptor = $aes.CreateEncryptor()
-
-    # Encrypt the data
-    $encryptedBytes = $encryptor.TransformFinalBlock($bytes, 0, $bytes.Length)
-
-    # Combine key, IV, and encrypted data
-    $finalBytes = $key + $iv + $encryptedBytes
+    # Encrypt the bytes using DPAPI
+    $encryptedBytes = [System.Security.Cryptography.ProtectedData]::Protect(
+        $bytes,
+        $null,
+        [System.Security.Cryptography.DataProtectionScope]::LocalMachine
+    )
 
     # Save the encrypted bytes to a file
-    [System.IO.File]::WriteAllBytes($OutputFile, $finalBytes)
+    [System.IO.File]::WriteAllBytes($OutputFile, $encryptedBytes)
 
     Write-Host "Installer links have been encrypted and saved to $OutputFile"
 }
 
-# Call the function to create the encrypted file
-Encrypt-InstallerLinks 
+# Export the function
+Export-ModuleMember -Function Encrypt-InstallerLinks 
