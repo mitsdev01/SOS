@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.6.4                                           #
+#                                                 Version 1.6.5                                          #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.6.4
+    Version:        1.6.5
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -45,7 +45,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.6.4"
+$ScriptVersion = "1.6.5"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -148,8 +148,24 @@ function Get-DecryptedURL {
     )
     
     try {
+        # Check if file exists
+        if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
+            throw "Encrypted file not found at c:\temp\SEPLinks.enc"
+        }
+        
+        # Check if file has content
+        $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
+        if ($fileSize -eq 0) {
+            throw "Encrypted file is empty"
+        }
+        
         # Read the encrypted file
         $encryptedBytes = [System.IO.File]::ReadAllBytes("c:\temp\SEPLinks.enc")
+        
+        # Verify minimum file size for key, IV, and some data
+        if ($encryptedBytes.Length -lt 64) { # 32 bytes key + 16 bytes IV + at least 16 bytes data
+            throw "Encrypted file is too small to be valid"
+        }
         
         # Extract key, IV, and encrypted data
         $keyBytes = $encryptedBytes[0..31]
@@ -163,23 +179,45 @@ function Get-DecryptedURL {
         $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
         $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
         
-        # Create decryptor
-        $decryptor = $aes.CreateDecryptor()
-        
-        # Decrypt the data
-        $decryptedBytes = $decryptor.TransformFinalBlock($encryptedData, 0, $encryptedData.Length)
-        
-        # Convert to JSON
-        $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
-        
-        # Convert to PowerShell object
-        $links = $json | ConvertFrom-Json
-        
-        # Return the requested URL
-        return $links.$Key
+        try {
+            # Create decryptor
+            $decryptor = $aes.CreateDecryptor()
+            
+            # Decrypt the data
+            $decryptedBytes = $decryptor.TransformFinalBlock($encryptedData, 0, $encryptedData.Length)
+            
+            # Convert to JSON
+            $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
+            
+            # Validate JSON
+            if (-not ($json -match '^{.*}$')) {
+                throw "Decrypted data is not valid JSON"
+            }
+            
+            # Convert to PowerShell object
+            $links = $json | ConvertFrom-Json
+            
+            # Check if key exists
+            if (-not $links.PSObject.Properties.Name.Contains($Key)) {
+                throw "Key '$Key' not found in decrypted data"
+            }
+            
+            # Return the requested URL
+            return $links.$Key
+        }
+        finally {
+            if ($decryptor) { $decryptor.Dispose() }
+            if ($aes) { $aes.Dispose() }
+        }
     }
     catch {
         Write-Log "Error decrypting URL for key '$Key': $_"
+        [System.Windows.Forms.MessageBox]::Show(
+            "Failed to load installer links. Please ensure the encrypted file exists and is accessible.`n`nError: $_",
+            "Decryption Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        )
         return $null
     }
 }
