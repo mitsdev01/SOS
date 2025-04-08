@@ -625,6 +625,9 @@ Start-Sleep -Seconds 2
 # Baseline log file
 Write-Log "Automated workstation baseline has started"
 
+$ProgressPreference = "SilentlyContinue"
+Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
+
 # Check for required modules
 Write-Host "`nPreparing required modules..." -NoNewline
 $spinner = @('/', '-', '\', '|')
@@ -687,9 +690,6 @@ catch {
     Write-Log "Module check failed: $($_.Exception.Message)"
 }
 
-$ProgressPreference = "SilentlyContinue"
-#Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/url.enc" -OutFile "c:\temp\url.enc" | Out-Null
-Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
 
 ############################################################################################################
 #                                            Wakelock Configuration                                        #
