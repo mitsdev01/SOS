@@ -141,49 +141,6 @@ Add-Type -TypeDefinition @"
     }
 "@
 
-# Function to decrypt installer links
-function Get-DecryptedURL {
-    param (
-        [string]$Key
-    )
-    
-    try {
-        # Read the encrypted file
-        $encryptedBytes = [System.IO.File]::ReadAllBytes("c:\temp\url.enc")
-        
-        # Extract key, IV, and encrypted data
-        $keyBytes = $encryptedBytes[0..31]
-        $ivBytes = $encryptedBytes[32..47]
-        $encryptedData = $encryptedBytes[48..($encryptedBytes.Length - 1)]
-        
-        # Create AES decryptor
-        $aes = New-Object System.Security.Cryptography.AesManaged
-        $aes.Key = $keyBytes
-        $aes.IV = $ivBytes
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        
-        # Create decryptor
-        $decryptor = $aes.CreateDecryptor()
-        
-        # Decrypt the data
-        $decryptedBytes = $decryptor.TransformFinalBlock($encryptedData, 0, $encryptedData.Length)
-        
-        # Convert to JSON
-        $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
-        
-        # Convert to PowerShell object
-        $links = $json | ConvertFrom-Json
-        
-        # Return the requested URL
-        return $links.$Key
-    }
-    catch {
-        Write-Log "Error decrypting URL for key '$Key': $_"
-        return $null
-    }
-}
-
 # Clear console window
 Clear-Host
 
@@ -1393,7 +1350,7 @@ $file = "$TempFolder\AgentInstall.exe"
 
 $agentName = "CagService"
 $agentPath = "C:\Program Files (x86)\CentraStage"
-https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1
+$installerUri = "https://concord.centrastage.net/csm/profile/downloadAgent/ce8a0a8d-84bd-4baa-850a-6f46e9c37dfc"
 
 # Check for existing Datto RMM agent
 $installStatus = Test-DattoInstallation
@@ -1545,7 +1502,7 @@ if ($O365) {
 } else {
     $OfficePath = "c:\temp\OfficeSetup.exe"
     if (-not (Test-Path $OfficePath)) {
-        $OfficeURL = Get-DecryptedURL -Key "Office365"
+        $OfficeURL = "https://axcientrestore.blob.core.windows.net/win11/OfficeSetup.exe"
         
         # Use spinner with progress bar for download
         Show-SpinnerWithProgressBar -Message "Downloading Microsoft Office 365..." -URL $OfficeURL -OutFile $OfficePath -DoneMessage " done."
@@ -1594,6 +1551,7 @@ if ($O365) {
 #region Acrobat Install
 
 # URL and file path for the Acrobat Reader installer
+$URL = "https://axcientrestore.blob.core.windows.net/win11/AcroRdrDC2500120432_en_US.exe"
 $AcroFilePath = "C:\temp\AcroRdrDC2500120432_en_US.exe"
 
 # First, check if Adobe Acrobat Reader is already installed
@@ -1612,9 +1570,6 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
     } 
 
     try {
-        # Get the URL from encrypted file
-        $URL = Get-DecryptedURL -Key "AdobeAcrobat"
-        
         # Get the file size first
         $response = Invoke-WebRequest -Uri $URL -Method Head -ErrorAction Stop
         $fileSize = $response.Headers['Content-Length']
@@ -1660,6 +1615,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
                                  Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
             
             if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
+                #Write-Host "Adobe Acrobat Reader installation completed successfully" -ForegroundColor Green
                 Write-Log "Adobe Acrobat Reader installed successfully"
             } else {
                 if (-not (Test-Path $acrobatPath)) {
@@ -1682,6 +1638,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
         # Cleanup
         if (Test-Path $AcroFilePath) {
             Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue
+            #Write-Host "Cleaned up installer file"
         }
     }
 }
@@ -1695,7 +1652,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 #region Sophos Install
 # Run the Sophos installation script and wait for it to complete before continuing
 $ProgressPreference = "SilentlyContinue"
-Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/url.enc" -OutFile "c:\temp\url.enc" | Out-Null
+Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
 $sophosScript = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1" -UseBasicParsing).Content
 $sophosJob = Start-Job -ScriptBlock { 
     param($scriptContent)
@@ -1750,7 +1707,7 @@ Write-Host " done." -ForegroundColor Green -NoNewline
 # Retrieve and remove the job
 Receive-Job -Job $sophosJob
 Remove-Job -Job $sophosJob -Force
-Remove-item -path "C:\temp\url " | Out-Null
+Remove-item -path "C:\temp\SEPLinks.enc" | Out-Null
 $ProgressPreference = "Continue"
 # Start a new line
 Write-Host ""
@@ -1768,7 +1725,7 @@ Write-Delayed "Initiating cleaning up of Windows bloatware..." -NewLine:$false
 # Trigger SOS Debloat for Windows 11
 if (Is-Windows11) {
     try {
-        $Win11DebloatURL = Get-DecryptedURL -Key "Win11Debloat"
+        $Win11DebloatURL = "https://axcientrestore.blob.core.windows.net/win11/SOS-Debloat.zip"
         $Win11DebloatFile = "c:\temp\SOS-Debloat.zip"
         Invoke-WebRequest -Uri $Win11DebloatURL -OutFile $Win11DebloatFile -UseBasicParsing -ErrorAction Stop 
         Start-Sleep -seconds 2
@@ -1789,10 +1746,11 @@ else {
     #Write-Log "This script is intended to run only on Windows 11."
 }
 
+
 # Trigger SOS Debloat for Windows 10
 if (Is-Windows10) {
     try {
-        $SOSDebloatURL = Get-DecryptedURL -Key "Win10Debloat"
+        $SOSDebloatURL = "https://axcientrestore.blob.core.windows.net/win11/SOS-Debloat.zip"
         $SOSDebloatFile = "c:\temp\SOS-Debloat.zip"
         Invoke-WebRequest -Uri $SOSDebloatURL -OutFile $SOSDebloatFile -UseBasicParsing -ErrorAction Stop 
         Start-Sleep -seconds 2
@@ -2006,8 +1964,8 @@ if ($service.Status -eq 'Running') {
 Write-Delayed "Checking for Windows Updates..." -NewLine:$false
 Set-UsoSvcAutomatic
 $ProgressPreference = 'SilentlyContinue'
-$WindowsUpdateURL = Get-DecryptedURL -Key "WindowsUpdate"
-Invoke-WebRequest -Uri $WindowsUpdateURL -OutFile "c:\temp\update_windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Update_Windows.ps1" -OutFile "c:\temp\update_windows.ps1"
+
 
 $ProgressPreference = 'Continue'
 if (Test-Path "c:\temp\update_windows.ps1") {
@@ -2303,8 +2261,7 @@ Write-Host -ForegroundColor "Green" $Padding
 Write-Host -ForegroundColor "Cyan" "Logs are available at:"
 Write-Host "  * $LogFile"
 Write-Host "  * $TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
-$BaselineCompleteURL = Get-DecryptedURL -Key "BaselineComplete"
-Invoke-WebRequest -uri $BaselineCompleteURL -OutFile "c:\temp\BaselineComplete.ps1"
+Invoke-WebRequest -uri "https://raw.githubusercontent.com/mitsdev01/SOS/main/BaselineComplete.ps1" -OutFile "c:\temp\BaselineComplete.ps1"
 $scriptPath = "c:\temp\BaselineComplete.ps1"
 Invoke-Expression "start powershell -ArgumentList '-noexit','-File $scriptPath'"
 Write-Host " "

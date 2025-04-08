@@ -1,21 +1,13 @@
 # Function to encrypt installer links
 function Encrypt-InstallerLinks {
     param (
-        [string]$OutputFile = "url.enc"
+        [string]$OutputFile = "InstallerLinks.enc"
     )
 
     # Create the installer links dictionary
     $InstallerLinks = New-Object Collections.Specialized.OrderedDictionary
 
-    # Add baseline script URLs
-    $InstallerLinks.Add('Office365', "https://axcientrestore.blob.core.windows.net/win11/OfficeSetup.exe")
-    $InstallerLinks.Add('AdobeAcrobat', "https://axcientrestore.blob.core.windows.net/win11/AcroRdrDC2500120432_en_US.exe")
-    $InstallerLinks.Add('Win11Debloat', "https://axcientrestore.blob.core.windows.net/win11/SOS-Debloat.zip")
-    $InstallerLinks.Add('Win10Debloat', "https://axcientrestore.blob.core.windows.net/win11/SOS-Debloat.zip")
-    $InstallerLinks.Add('WindowsUpdate', "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Update_Windows.ps1")
-    $InstallerLinks.Add('BaselineComplete', "https://raw.githubusercontent.com/mitsdev01/SOS/main/BaselineComplete.ps1")
-
-    # Add Sophos installer links
+    # Add all installer links
     $InstallerLinks.Add('Atlanta Family Law Immigration', "https://api-cloudstation-us-east-2.prod.hydra.sophos.com/api/download/7e0de62726ddb7f47ed8458fd0b3b41d/SophosSetup.exe")
     $InstallerLinks.Add('Affiliated Resources Group', "https://api-cloudstation-us-east-2.prod.hydra.sophos.com/api/download/fdcc52e2a8c06d03db0c0868d010a4ff/SophosSetup.exe")
     $InstallerLinks.Add('Alex Rousch', "https://api-cloudstation-us-east-2.prod.hydra.sophos.com/api/download/4aae93e82d96bc5eafd0698fa31c1d29/SophosSetup.exe")
