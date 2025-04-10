@@ -525,8 +525,7 @@ Add-Type -TypeDefinition @"
     }
 "@
 
-# Function to decrypt installer links
-Read-Host -Prompt "Press Enter to continue"
+#Read-Host -Prompt "Press Enter to continue"
 # Clear console window
 Clear-Host
 
