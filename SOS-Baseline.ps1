@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.1d"
+$ScriptVersion = "1.7.1"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -351,12 +351,14 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug:$false | Out-Null
+    #Write-Host "`nLoading software URLs..." | Out-Null
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug | Out-Null
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
 
     # Assign URLs from decrypted data
+    #Write-Host "`nAssigning URLs..." | Out-Null
     $CheckModules = $softwareLinks.CheckModules
     $DattoRMM = $softwareLinks.DattoRMM
     $OfficeURL = $softwareLinks.OfficeURL
@@ -386,7 +388,8 @@ try {
     }
 
     # Now decrypt Sophos installer links
-    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug:$false | Out-Null
+    #Write-Host "`nLoading Sophos installer links..." | Out-Null
+    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug | Out-Null
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
     }
@@ -396,9 +399,9 @@ try {
     if ([string]::IsNullOrWhiteSpace($SophosAV)) {
         throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
     }
+    #Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
 
-    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
-    Write-Host "`nSuccessfully loaded all required URLs" | Out-Null
+    #Write-Host "`nSuccessfully loaded all required URLs" | Out-Null
 }
 catch {
     [System.Windows.Forms.MessageBox]::Show(
@@ -1864,6 +1867,489 @@ foreach ($task in $taskList) {
 Write-Host " done." -ForegroundColor Green
 
 Write-Log "Disabled unnecessary scheduled tasks"
+#endregion Profile Customization
+
+############################################################################################################
+#                                              Datto RMM Deployment                                        #
+#                                                                                                          #
+############################################################################################################
+#region RMM Install
+
+# Agent Installation Configuration
+$TempFolder = "c:\temp"
+$file = "$TempFolder\AgentInstall.exe"
+
+$agentName = "CagService"
+$agentPath = "C:\Program Files (x86)\CentraStage"
+
+# Check for existing Datto RMM agent
+$installStatus = Test-DattoInstallation
+if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
+    Write-Host "Datto RMM agent is already installed and running." -ForegroundColor Cyan
+    Write-Log "Datto RMM agent already installed and running"
+} else {
+    # Clean up any partial installations
+    if ($installStatus.FilesExist) {
+        Write-Host "Cleaning up partial installation..." -ForegroundColor Yellow
+        try {
+            # Stop service if it exists but not running
+            if ($installStatus.ServiceExists -and -not $installStatus.ServiceRunning) {
+                Stop-Service -Name $agentName -Force -ErrorAction SilentlyContinue
+                # Give it a moment to stop
+                Start-Sleep -Seconds 3
+            }
+            Remove-Item -Path $agentPath -Recurse -Force -ErrorAction Stop
+        } catch {
+            Write-Host "Warning: Could not fully clean up previous installation. Continuing anyway." -ForegroundColor Yellow
+            Write-Log "Warning: Could not fully clean up previous RMM installation: $($_.Exception.Message)"
+        }
+    }
+
+    # Download and install using spinner animation
+    Show-SpinnerWithProgressBar -Message "Downloading Datto RMM Agent..." -URL $DattoRMM -OutFile $file -DoneMessage " done."
+    
+    # Verify the file exists and has content
+    if ((Test-Path $file) -and (Get-Item $file).Length -gt 0) {
+        # Install with spinner animation
+        $fileToInstall = $file  # Create a copy of the path
+        $installResult = Show-SpinningWait -Message "Installing Datto RMM Agent..." -DoneMessage " done." -ScriptBlock {
+            param ($InstallerPath)  # Accept the file path as a parameter
+            
+            try {
+                Write-Output "Using installer file: $InstallerPath"  # Debug output
+                
+                # Verify file exists before attempting to run
+                if (!(Test-Path $InstallerPath)) {
+                    return @{
+                        Success = $false
+                        Error = "Installer file not found at path: $InstallerPath"
+                    }
+                }
+                
+                # Run installer
+                $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+                $startInfo.FileName = $InstallerPath
+                $startInfo.Arguments = "/S"
+                $startInfo.UseShellExecute = $true
+                $startInfo.Verb = "runas"  # Run as admin
+                
+                $process = [System.Diagnostics.Process]::Start($startInfo)
+                if ($null -eq $process) {
+                    throw "Failed to start installation process"
+                }
+                
+                $process.WaitForExit()
+                $exitCode = $process.ExitCode
+                
+                return @{
+                    Success = $exitCode -eq 0
+                    ExitCode = $exitCode
+                }
+            } catch {
+                return @{
+                    Success = $false
+                    Error = $_.Exception.Message
+                }
+            }
+        } -ArgumentList $fileToInstall -SuppressOutput
+        
+        if ($installResult.Success) {
+            # Wait for service initialization
+            Show-SpinningWait -Message "Waiting for service initialization..." -DoneMessage " done." -ScriptBlock {
+                Start-Sleep -Seconds 15
+            } -SuppressOutput
+            
+            # Check if the service exists and is running
+            $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
+            
+            if ($null -ne $service -and $service.Status -eq "Running") {
+                #Write-Host "Installation completed successfully! Service is running." -ForegroundColor Green
+                Write-Log "Datto RMM agent installed successfully"
+                # Clean up installer file
+                if (Test-Path $file) {
+                    Remove-Item -Path $file -Force
+                }
+            } else {
+                if ($null -ne $service) {
+                    Write-Host "Datto RMM Service exists but status is: $($service.Status)" -ForegroundColor Yellow
+                    Show-SpinningWait -Message "Attempting to start Datto RMM Service..." -DoneMessage " done." -ScriptBlock {
+                        Start-Service -Name $agentName -ErrorAction SilentlyContinue
+                        Start-Sleep -Seconds 5
+                    } -SuppressOutput
+                    
+                    $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
+                    if ($null -ne $service -and $service.Status -eq "Running") {
+                        Write-Log "Datto RMM service started manually after installation"
+                    } else {
+                        Write-Host "Failed to start Datto RMM service." -ForegroundColor Red
+                        Write-Log "Failed to start Datto RMM service after installation"
+                    }
+                } else {
+                    Write-Host "Datto RMM Service does not exist." -ForegroundColor Red
+                    Write-Log "Datto RMM service does not exist after installation"
+                }
+            }
+        } else {
+            Write-Host "Installation failed with exit code $($installResult.ExitCode)." -ForegroundColor Red
+            Write-Log "Datto RMM installation failed with exit code $($installResult.ExitCode)"
+            
+            if ($installResult.Error) {
+                Write-Host "Error: $($installResult.Error)" -ForegroundColor Red
+                Write-Log "Error during Datto RMM installation: $($installResult.Error)"
+            }
+            
+            $fileInfo = Get-Item $file -ErrorAction SilentlyContinue
+            if ($null -ne $fileInfo) {
+                Write-Host "File size: $($fileInfo.Length) bytes" -ForegroundColor Yellow
+                if ($fileInfo.Length -lt 1000) {
+                    Write-Host "File appears to be too small to be a valid installer!" -ForegroundColor Red
+                    Write-Log "Datto RMM installer file is too small to be valid: $($fileInfo.Length) bytes"
+                }
+            }
+        }
+    } else {
+        Write-Host "Error: Downloaded file is missing or empty." -ForegroundColor Red
+        Write-Log "Datto RMM installer file is missing or empty"
+    }
+}
+#endregion RMMDeployment
+
+
+############################################################################################################
+#                                          Office 365 Installation                                         #
+#                                                                                                          #
+############################################################################################################
+#region M365 Install
+
+# Install Office 365
+$O365 = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
+                             HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+Where-Object { $_.DisplayName -like "*Microsoft 365 Apps for enterprise - en-us*" }
+
+if ($O365) {
+    Write-Host -ForegroundColor Cyan "Existing Microsoft Office installation found."
+    Write-Log "Existing Microsoft Office installation found."
+} else {
+    $OfficePath = "c:\temp\OfficeSetup.exe"
+    if (-not (Test-Path $OfficePath)) {
+        # $OfficeURL = Get-DecryptedURL -Key "OfficeURL" # REMOVED - Use variable loaded earlier
+        if ([string]::IsNullOrWhiteSpace($OfficeURL)) { throw "OfficeURL is not loaded." } # Added check
+        
+        # Use spinner with progress bar for download
+        Show-SpinnerWithProgressBar -Message "Downloading Microsoft Office 365..." -URL $OfficeURL -OutFile $OfficePath -DoneMessage " done."
+    }
+    
+    # Validate successful download by checking the file size
+    $FileSize = (Get-Item $OfficePath).Length
+    $ExpectedSize = 7733536 # in bytes
+    if ($FileSize -eq $ExpectedSize) {
+        # Kill any running Office processes
+        taskkill /f /im OfficeClickToRun.exe *> $null
+        taskkill /f /im OfficeC2RClient.exe *> $null
+        Start-Sleep -Seconds 10
+        
+        Show-SpinningWait -Message "Installing Microsoft Office 365..." -ScriptBlock {
+            Start-Process -FilePath "c:\temp\OfficeSetup.exe" -Wait
+            Start-Sleep -Seconds 15
+        } -DoneMessage " done."
+        
+        if (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "Microsoft 365 Apps for enterprise - en-us"}) {
+            Write-Log "Office 365 Installation Completed Successfully."
+            Start-Sleep -Seconds 10
+            taskkill /f /im OfficeClickToRun.exe *> $null
+            taskkill /f /im OfficeC2RClient.exe *> $null
+            Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
+        } else {
+            Write-Host -ForegroundColor Red "Microsoft Office 365 installation failed."
+            Write-Log "Office 365 installation failed."
+        }   
+    }
+    else {
+        # Report download error
+        Write-Log "Office download failed!"
+        Write-Host -ForegroundColor Red "Download failed or file size does not match."
+        Start-Sleep -Seconds 10
+        Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
+    }
+} 
+#endregion M365 Install
+
+
+############################################################################################################
+#                                        Adobe Acrobat Installation                                        #
+#                                                                                                          #
+############################################################################################################
+#region Acrobat Install
+
+# URL and file path for the Acrobat Reader installer
+$AcroFilePath = "C:\temp\AcroRdrDC2500120432_en_US.exe"
+# Use variable loaded earlier for Adobe URL
+# $URL = Get-DecryptedURL -Key "AcrobatURL" # REMOVED
+if ([string]::IsNullOrWhiteSpace($AdobeURL)) { throw "AdobeURL is not loaded." } # Added check
+
+# First, check if Adobe Acrobat Reader is already installed
+$acrobatPath = "${env:ProgramFiles(x86)}\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe"
+$acrobatInstalled = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
+                                      HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+                     Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
+
+if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
+    Write-Host "Existing Adobe Acrobat Reader installation found." -ForegroundColor Cyan
+    Write-Log "Adobe Acrobat Reader already installed, skipped installation."
+} else {
+    # Create temp directory if it doesn't exist
+    if (-not (Test-Path "C:\temp")) {
+        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
+    } 
+
+    try {
+        # Get the URL from encrypted file - REMOVED (already have $AdobeURL)
+        # $URL = Get-DecryptedURL -Key "AcrobatURL"
+        
+        # Get the file size first
+        $response = Invoke-WebRequest -Uri $AdobeURL -Method Head -ErrorAction Stop
+        $fileSize = $response.Headers['Content-Length']
+        
+        # Download the Acrobat Reader installer with spinner AND progress bar
+        Show-SpinnerWithProgressBar -Message "Downloading Adobe Acrobat Reader ($fileSize bytes)..." -URL $AdobeURL -OutFile $AcroFilePath -DoneMessage " done."
+        
+        $FileSize = (Get-Item $AcroFilePath).Length
+        
+        # Check if the file exists and has content
+        if ((Test-Path $AcroFilePath -PathType Leaf) -and ($FileSize -gt 0)) {
+            # Install Acrobat Reader with spinner
+            $installResult = Show-SpinningWait -Message "Installing Adobe Acrobat Reader..." -ScriptBlock {
+                # Start the installation process
+                $process = Start-Process -FilePath "C:\temp\AcroRdrDC2500120432_en_US.exe" -ArgumentList "/sAll /rs /msi EULA_ACCEPT=YES /qn" -NoNewWindow -PassThru
+                
+                # Wait for initial process to complete
+                $process | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
+                
+                # Look for Reader installer processes and wait
+                $timeout = 300  # 5 minutes timeout
+                $startTime = Get-Date
+                
+                do {
+                    Start-Sleep -Seconds 5
+                    $msiProcess = Get-Process -Name msiexec -ErrorAction SilentlyContinue
+                    $readerProcess = Get-Process -Name Reader_en_install -ErrorAction SilentlyContinue
+                    
+                    $elapsedTime = (Get-Date) - $startTime
+                    if ($elapsedTime.TotalSeconds -gt $timeout) {
+                        break
+                    }
+                } while ($msiProcess -or $readerProcess)
+                
+                # Try to gracefully close any remaining installer processes
+                Stop-Process -Name Reader_en_install -Force -ErrorAction SilentlyContinue
+            }
+            
+            # Verify installation
+            $acrobatPath = "${env:ProgramFiles(x86)}\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe"
+            $acrobatInstalled = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
+                                                HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+                                 Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
+            
+            if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
+                Write-Log "Adobe Acrobat Reader installed successfully"
+            } else {
+                if (-not (Test-Path $acrobatPath)) {
+                    Write-Host "Adobe Acrobat Reader executable not found" -ForegroundColor Yellow
+                }
+                if (-not $acrobatInstalled) {
+                    Write-Host "Adobe Acrobat Reader not found in installed applications registry" -ForegroundColor Yellow
+                }
+                Write-Host "Adobe Acrobat Reader installation may not have completed properly" -ForegroundColor Yellow
+                Write-Log "Adobe Acrobat Reader installation may not have completed properly"
+            }
+        } else {
+            Write-Host "Download failed or file is empty" -ForegroundColor Red
+            Write-Log "Adobe Acrobat Reader download failed or file is empty"
+        }
+    } catch {
+        Write-Host "Error: $_" -ForegroundColor Red
+        Write-Log "Error installing Adobe Acrobat Reader: $_"
+    } finally {
+        # Cleanup
+        if (Test-Path $AcroFilePath) {
+            Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+#endregion Acrobat Installation
+
+
+############################################################################################################
+#                                           Sophos Installation                                           #
+#                                                                                                          #
+############################################################################################################
+#region Sophos Install
+# Run the Sophos installation script and wait for it to complete before continuing
+$ProgressPreference = "SilentlyContinue"
+#Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
+$sophosScript = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1" -UseBasicParsing).Content
+$sophosJob = Start-Job -ScriptBlock { 
+    param($scriptContent)
+    Invoke-Expression $scriptContent
+} -ArgumentList $sophosScript
+
+# Wait for the Sophos installation to complete
+Write-Delayed "Installing Sophos AV..." -NewLine:$false
+
+# Animation characters for the spinner
+$spinChars = '|', '/', '-', '\'
+$spinIndex = 0
+$initialCursorPosition = $host.UI.RawUI.CursorPosition
+
+# Create a timer for the spinner animation
+$timer = New-Object System.Timers.Timer
+$timer.Interval = 250 # Update every 250ms
+$timer.AutoReset = $true
+
+# Timer event to update the spinner
+$timer.Add_Elapsed({
+    # Capture current cursor position
+    $currentPosition = $host.UI.RawUI.CursorPosition
+    
+    # Return to the spinner position
+    $host.UI.RawUI.CursorPosition = $initialCursorPosition
+    
+    # Display the next spinner character
+    Write-Host $spinChars[$spinIndex] -NoNewline
+    
+    # Update spinner index
+    $spinIndex = ($spinIndex + 1) % $spinChars.Length
+    
+    # Restore cursor position
+    $host.UI.RawUI.CursorPosition = $currentPosition
+})
+
+# Start the spinner animation
+$timer.Start()
+
+# Wait for the Sophos installation job to complete
+$sophosJob | Wait-Job | Out-Null
+
+# Stop the spinner animation
+$timer.Stop()
+$timer.Dispose()
+
+# Go back to the spinner position and replace it with "done"
+$host.UI.RawUI.CursorPosition = $initialCursorPosition
+Write-Host " done." -ForegroundColor Green -NoNewline
+
+# Retrieve and remove the job
+Receive-Job -Job $sophosJob
+Remove-Job -Job $sophosJob -Force
+Remove-item -path "C:\temp\SEPLinks.enc" | Out-Null
+$ProgressPreference = "Continue"
+# Start a new line
+Write-Host ""
+#endregion Sophos Install
+
+
+############################################################################################################
+#                                           System Restore Point                                           #
+#                                                                                                          #
+############################################################################################################
+#region System Restore
+# Create a restore point
+Start-VssService
+Remove-RestorePointFrequencyLimit
+Write-Delayed "Creating a system restore point..." -NewLine:$false
+
+# Initialize spinner
+$spinner = @('/', '-', '\', '|')
+$spinnerIndex = 0
+[Console]::Write($spinner[$spinnerIndex])
+
+# Set up the job to create the restore point
+$job = Start-Job -ScriptBlock { 
+    Checkpoint-Computer -Description "MITS New Workstation Baseline Completed - $(Get-Date -Format 'MM-dd-yyyy HH:mm:t')" -RestorePointType "MODIFY_SETTINGS" 
+}
+
+# Display spinner while job is running (max 90 seconds)
+$timeout = 90
+$startTime = Get-Date
+$success = $false
+
+while (($job.State -eq 'Running') -and (((Get-Date) - $startTime).TotalSeconds -lt $timeout)) {
+    Start-Sleep -Milliseconds 100
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
+}
+
+# Check if job completed or timed out
+if ($job.State -eq 'Running') {
+    # Job timed out
+    Stop-Job $job
+    $success = $false
+} else {
+    # Job completed, check result
+    $result = Receive-Job $job
+    $success = $true
+}
+
+# Remove the job
+Remove-Job $job -Force
+
+# Clear the spinner character
+[Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+
+# Display result
+if ($success) {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write(" created successfully.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    Write-Log "System restore point created successfully"
+} else {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write(" Failed to create restore point.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    Write-Log "Failed to create system restore point"
+}
+#endregion System Restore Point
+
+
+############################################################################################################
+#                                           Bloatware Cleanup                                              #
+#                                                                                                          #
+############################################################################################################
+#region Bloatware Cleanup
+
+Write-Delayed "Initiating cleaning up of Windows bloatware..." -NewLine:$false
+
+# Use variables loaded earlier
+if ([string]::IsNullOrWhiteSpace($Win11DebloatURL)) { throw "Win11DebloatURL is not loaded." }
+if ([string]::IsNullOrWhiteSpace($Win10DebloatURL)) { throw "Win10DebloatURL is not loaded." } # Note: Currently points to same zip as Win11
+
+# Trigger SOS Debloat for Windows 11
+if (Is-Windows11) {
+    try {
+        # $Win11DebloatURL = Get-DecryptedURL -Key "Win11DebloatURL" # REMOVED
+        $Win11DebloatFile = "c:\temp\SOS-Debloat.zip"
+        Invoke-WebRequest -Uri $Win11DebloatURL -OutFile $Win11DebloatFile -UseBasicParsing -ErrorAction Stop 
+        Start-Sleep -seconds 2
+        Expand-Archive $Win11DebloatFile -DestinationPath 'c:\temp\SOS-Debloat' -Force # Added -Force
+        Start-Sleep -Seconds 2
+        Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\SOS-Debloat\SOS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -DisableLockscreenTips -DisableSuggestions -ShowKnownFileExt -TaskbarAlignLeft -HideSearchTb -DisableWidgets -Silent'"
+        Start-Sleep -Seconds 2
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
+        Start-Sleep -Seconds 30
+        Write-Log "Windows 11 Debloat completed successfully."
+        Write-TaskComplete
+    }
+    catch {
+        Write-Error "An error occurred: $($Error[0].Exception.Message)"
+    }
+}
+else {
+    #Write-Log "This script is intended to run only on Windows 11."
+}
 
 # Trigger SOS Debloat for Windows 10
 if (Is-Windows10) {
@@ -2030,7 +2516,7 @@ if (Test-Path "c:\temp\update_windows.ps1") {
     Start-Sleep -seconds 3
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.SendKeys]::SendWait('%{TAB}')
-    Move-ProcessWindowToTop -processName "Windows PowerShell" | Out-Null
+    Move-ProcessWindowToTopRight -processName "Windows PowerShell" | Out-Null
     Start-Sleep -Seconds 1
     
     # Use a single Write-Host for both transcript and console display
