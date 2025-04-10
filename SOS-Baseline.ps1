@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.7.2                                           #
+#                                                 Version 1.7.3                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -23,7 +23,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.7.2
+    Version:        1.7.3
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.2"
+$ScriptVersion = "1.7.3"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -87,44 +87,67 @@ catch {
 
 #Write-Delayed "Stage installer links..." -NewLine:$false
 try {
-    # Create temp directory if it doesn't exist
-    if (-not (Test-Path "C:\temp")) {
-        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
+    # Decrypt software download URLs first
+    Write-Host "`nLoading software URLs..." | Out-Null
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug | Out-Null
+    if ($null -eq $softwareLinks) {
+        throw "Failed to decrypt software URLs"
     }
-    
-    # Download links
-    $urls = @(
-        "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc",
-        "https://axcientrestore.blob.core.windows.net/win11/urls.enc"
-    )
-    
-    foreach ($url in $urls) {
-        $fileName = "C:\temp\" + [System.IO.Path]::GetFileName($url)
-        Invoke-WebRequest -Uri $url -OutFile $fileName -ErrorAction Stop | Out-Null
-        
-        # Verify file exists and has content
-        if (-not (Test-Path $fileName)) {
-            throw "Failed to download $fileName"
-        }
-        
-        $fileSize = (Get-Item $fileName).Length
-        if ($fileSize -eq 0) {
-            throw "Downloaded file $fileName is empty"
-        }
+
+    # Assign URLs from decrypted data
+    Write-Host "`nAssigning URLs..." | Out-Null
+    $CheckModules = $softwareLinks.CheckModules
+    $DattoRMM = $softwareLinks.DattoRMM
+    $OfficeURL = $softwareLinks.OfficeURL
+    $AdobeURL = $softwareLinks.AdobeURL
+    $Win11DebloatURL = $softwareLinks.Win11DebloatURL
+    $Win10DebloatURL = $softwareLinks.Win10DebloatURL
+    $SOSDebloatURL = $softwareLinks.SOSDebloatURL
+    $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
+    $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
+
+    # Verify all URLs are available
+    $requiredUrls = @{
+        'CheckModules' = $CheckModules
+        'DattoRMM' = $DattoRMM
+        'OfficeURL' = $OfficeURL
+        'AdobeURL' = $AdobeURL
+        'Win11DebloatURL' = $Win11DebloatURL
+        'Win10DebloatURL' = $Win10DebloatURL
+        'SOSDebloatURL' = $SOSDebloatURL
+        'UpdateWindowsURL' = $UpdateWindowsURL
+        'BaselineCompleteURL' = $BaselineCompleteURL
     }
-    
-    #Write-TaskComplete
-    Write-Log "Successfully downloaded installer links"
+
+    $missingUrls = $requiredUrls.GetEnumerator() | Where-Object { [string]::IsNullOrEmpty($_.Value) } | Select-Object -ExpandProperty Key
+    if ($missingUrls) {
+        throw "The following URLs are missing or empty:`n$($missingUrls -join "`n")"
+    }
+
+    # Now decrypt Sophos installer links
+    Write-Host "`nLoading Sophos installer links..." | Out-Null
+    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug | Out-Null
+    if ($null -eq $sepLinks) {
+        throw "Failed to decrypt Sophos installer links"
+    }
+
+    $DefaultClientName = 'Atlanta Family Law Immigration' # CHANGE THIS AS NEEDED
+    $SophosAV = Get-SophosClientURL -ClientName $DefaultClientName -SophosLinksData $sepLinks
+    if ([string]::IsNullOrWhiteSpace($SophosAV)) {
+        throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
+    }
+    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
+
+    Write-Host "`nSuccessfully loaded all required URLs" | Out-Null
 }
 catch {
-    Write-TaskFailed
-    Write-Log "Failed to download installer links: $_"
     [System.Windows.Forms.MessageBox]::Show(
-        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
-        "Download Error",
+        "Failed to process URLs.`n`nError: $_",
+        "URL Processing Error",
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Error
     )
+    exit 1
 }
 
 # Function to decrypt files using AES
