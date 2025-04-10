@@ -357,31 +357,30 @@ try {
     }
 
     # Assign URLs from decrypted data
-    Write-Host "`nAssigning URLs..."
+    #Write-Host "`nAssigning URLs..."
     $CheckModules = $softwareLinks.CheckModules
-    Write-Host "CheckModules = $CheckModules"
+    #Write-Host "CheckModules = $CheckModules"
     # Assign DattoRMM URL
     $DattoRMM = $softwareLinks.DattoRMM
-    Write-Host "DattoRMM = $DattoRMM"
+    #Write-Host "DattoRMM = $DattoRMM"
     $OfficeURL = $softwareLinks.OfficeURL
-    Write-Host "OfficeURL = $OfficeURL"
+    #Write-Host "OfficeURL = $OfficeURL"
     $AdobeURL = $softwareLinks.AdobeURL
-    Write-Host "AdobeURL = $AdobeURL"
+    #Write-Host "AdobeURL = $AdobeURL"
     $Win11DebloatURL = $softwareLinks.Win11DebloatURL
-    Write-Host "Win11DebloatURL = $Win11DebloatURL"
+    #Write-Host "Win11DebloatURL = $Win11DebloatURL"
     $Win10DebloatURL = $softwareLinks.Win10DebloatURL
-    Write-Host "Win10DebloatURL = $Win10DebloatURL"
+    #Write-Host "Win10DebloatURL = $Win10DebloatURL"
     $SOSDebloatURL = $softwareLinks.SOSDebloatURL
-    Write-Host "SOSDebloatURL = $SOSDebloatURL"
+    #Write-Host "SOSDebloatURL = $SOSDebloatURL"
     $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
-    Write-Host "UpdateWindowsURL = $UpdateWindowsURL"
+    #Write-Host "UpdateWindowsURL = $UpdateWindowsURL"
     $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
-    Write-Host "BaselineCompleteURL = $BaselineCompleteURL"
+    #Write-Host "BaselineCompleteURL = $BaselineCompleteURL"
 
     # Verify all URLs are available
     $requiredUrls = @{
         'CheckModules' = $CheckModules
-        # Add DattoRMM to verification
         'DattoRMM' = $DattoRMM
         'OfficeURL' = $OfficeURL
         'AdobeURL' = $AdobeURL
@@ -398,7 +397,7 @@ try {
     }
 
     # Now decrypt Sophos installer links
-    Write-Host "`nLoading Sophos installer links..."
+    #Write-Host "`nLoading Sophos installer links..."
     $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug # Call new function
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
@@ -418,9 +417,9 @@ try {
     if ([string]::IsNullOrWhiteSpace($SophosAV)) {
         throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
     }
-    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV"
+    #Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV"
 
-    Write-Host "`nSuccessfully loaded all required URLs"
+    #Write-Host "`nSuccessfully loaded all required URLs"
 }
 catch {
     [System.Windows.Forms.MessageBox]::Show(
@@ -1132,7 +1131,7 @@ $ProgressPreference = "SilentlyContinue"
 
 
 # Check for required modules
-Write-Host "`nPreparing required modules..." -NoNewline
+Write-Delayed "`nPreparing required modules..." -NewLine:$false
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
@@ -2213,7 +2212,7 @@ $sophosJob = Start-Job -ScriptBlock {
 } -ArgumentList $sophosScript
 
 # Wait for the Sophos installation to complete
-Write-Host "Installing Sophos AV..." -NoNewline
+Write-Delayed "Installing Sophos AV..." -NewLine:$false
 
 # Animation characters for the spinner
 $spinChars = '|', '/', '-', '\'
