@@ -85,7 +85,7 @@ catch {
 }
 #>
 
-Write-Delayed "Stage installer links..." -NewLine:$false
+#Write-Delayed "Stage installer links..." -NewLine:$false
 try {
     # Create temp directory if it doesn't exist
     if (-not (Test-Path "C:\temp")) {
@@ -113,7 +113,7 @@ try {
         }
     }
     
-    Write-TaskComplete
+    #Write-TaskComplete
     Write-Log "Successfully downloaded installer links"
 }
 catch {
