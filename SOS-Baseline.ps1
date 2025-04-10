@@ -52,39 +52,6 @@ $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
-#Write-Delayed "Downloading installer links..." -NewLine:$false
-try {
-    # Create temp directory if it doesn't exist
-    if (-not (Test-Path "C:\temp")) {
-        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
-    }
-    
-    # Download the encrypted links file
-    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
-    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
-    # Verify file exists and has content
-    if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
-        throw "Failed to download encrypted links file"
-    }
-    
-    $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
-    if ($fileSize -eq 0) {
-        throw "Downloaded encrypted links file is empty"
-    }
-    
-    #Write-TaskComplete
-    #Write-Log "Successfully downloaded installer links"
-}
-catch {
-    Write-TaskFailed
-    Write-Log "Failed to download installer links: $_"
-    [System.Windows.Forms.MessageBox]::Show(
-        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
-        "Download Error",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Error
-    )
-}
 
 # Function to decrypt files using AES
 function Decrypt-SoftwareURLs {
@@ -430,6 +397,38 @@ catch {
         [System.Windows.Forms.MessageBoxIcon]::Error
     )
     exit 1
+}
+
+#Write-Delayed "Stage installer links..." -NewLine:$false
+try {
+    # Create temp directory if it doesn't exist
+    if (-not (Test-Path "C:\temp")) {
+        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
+    }
+    # Download links
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
+    # Verify file exists and has content
+    if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
+        throw "Failed to download encrypted links file"
+    }
+    
+    $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
+    if ($fileSize -eq 0) {
+        throw "Downloaded encrypted links file is empty"
+    }
+    #Write-TaskComplete
+    #Write-Log "Successfully downloaded installer links"
+}
+catch {
+    Write-TaskFailed
+    Write-Log "Failed to download installer links: $_"
+    [System.Windows.Forms.MessageBox]::Show(
+        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
+        "Download Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
 }
 
 # Store system type for use in termination handler
@@ -1132,7 +1131,7 @@ $ProgressPreference = "SilentlyContinue"
 
 
 # Check for required modules
-Write-Host "`nPreparing required modules..." -NoNewline
+Write-Delayed "`nPreparing required modules..." -NewLine:$false
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
@@ -2213,7 +2212,7 @@ $sophosJob = Start-Job -ScriptBlock {
 } -ArgumentList $sophosScript
 
 # Wait for the Sophos installation to complete
-Write-Host "Installing Sophos AV..." -NoNewline
+Write-Delayed "Installing Sophos AV..." -NewLine:$false
 
 # Animation characters for the spinner
 $spinChars = '|', '/', '-', '\'
