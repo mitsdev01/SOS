@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.6.8                                           #
+#                                                 Version 1.7.0                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -23,7 +23,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.6.8
+    Version:        1.7.0
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.6.8"
+$ScriptVersion = "1.7.0"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -60,8 +60,10 @@ try {
     }
     
     # Download the encrypted links file
+    $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
     Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
+    $ProgressPreference = 'Continue'
     # Verify file exists and has content
     if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
         throw "Failed to download encrypted links file"
@@ -133,8 +135,8 @@ function Decrypt-SoftwareURLs {
             $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
 
             if ($ShowDebug) {
-                Write-Host "`nDecrypted JSON from $FilePath :"
-                Write-Host $json
+                Write-Host "`nDecrypted JSON from $FilePath :"  | Out-Null
+                Write-Host $json | Out-Null
             }
             
             # Convert JSON to PowerShell object
@@ -142,10 +144,10 @@ function Decrypt-SoftwareURLs {
 
             # Debug: Show object type and properties
             if ($ShowDebug) {
-                Write-Host "`nObject Type: $($result.GetType().FullName)"
-                Write-Host "Available Properties:"
+                Write-Host "`nObject Type: $($result.GetType().FullName)" | Out-Null
+                Write-Host "Available Properties:" | Out-Null
                 $result.PSObject.Properties | ForEach-Object {
-                    Write-Host "  $($_.Name) = $($_.Value)"
+                    Write-Host "  $($_.Name) = $($_.Value)" | Out-Null
                 }
             }
 
@@ -215,8 +217,8 @@ function Decrypt-SophosLinks {
             $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
 
             if ($ShowDebug) {
-                Write-Host "`nDecrypted JSON from $FilePath :"
-                Write-Host $json
+                Write-Host "`nDecrypted JSON from $FilePath :" | Out-Null
+                Write-Host $json | Out-Null
             }
 
             # Convert JSON to PowerShell object (should be an OrderedDictionary structure)
@@ -224,11 +226,11 @@ function Decrypt-SophosLinks {
 
             # Debug: Show object type and properties
             if ($ShowDebug) {
-                Write-Host "`nObject Type: $($result.GetType().FullName)"
-                Write-Host "Available Properties/Keys:"
+                Write-Host "`nObject Type: $($result.GetType().FullName)" | Out-Null
+                Write-Host "Available Properties/Keys:" | Out-Null
                 # Iterate PSCustomObject properties correctly
                 $result.PSObject.Properties | ForEach-Object {
-                    Write-Host "  $($_.Name) = $($_.Value)"
+                    Write-Host "  $($_.Name) = $($_.Value)" | Out-Null
                 }
             }
 
@@ -350,38 +352,37 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    Write-Host "`nLoading software URLs..."
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug # Call renamed function
+    #Write-Host "`nLoading software URLs..."
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc"  -ShowDebug:$false
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
 
     # Assign URLs from decrypted data
-    Write-Host "`nAssigning URLs..."
+    #Write-Host "`nAssigning URLs..."
     $CheckModules = $softwareLinks.CheckModules
-    Write-Host "CheckModules = $CheckModules"
+    #Write-Host "CheckModules = $CheckModules"
     # Assign DattoRMM URL
     $DattoRMM = $softwareLinks.DattoRMM
-    Write-Host "DattoRMM = $DattoRMM"
+    #Write-Host "DattoRMM = $DattoRMM"
     $OfficeURL = $softwareLinks.OfficeURL
-    Write-Host "OfficeURL = $OfficeURL"
+    #Write-Host "OfficeURL = $OfficeURL"
     $AdobeURL = $softwareLinks.AdobeURL
-    Write-Host "AdobeURL = $AdobeURL"
+    #Write-Host "AdobeURL = $AdobeURL"
     $Win11DebloatURL = $softwareLinks.Win11DebloatURL
-    Write-Host "Win11DebloatURL = $Win11DebloatURL"
+    #Write-Host "Win11DebloatURL = $Win11DebloatURL"
     $Win10DebloatURL = $softwareLinks.Win10DebloatURL
-    Write-Host "Win10DebloatURL = $Win10DebloatURL"
+    #Write-Host "Win10DebloatURL = $Win10DebloatURL"
     $SOSDebloatURL = $softwareLinks.SOSDebloatURL
-    Write-Host "SOSDebloatURL = $SOSDebloatURL"
+    #Write-Host "SOSDebloatURL = $SOSDebloatURL"
     $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
-    Write-Host "UpdateWindowsURL = $UpdateWindowsURL"
+    #Write-Host "UpdateWindowsURL = $UpdateWindowsURL"
     $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
-    Write-Host "BaselineCompleteURL = $BaselineCompleteURL"
+    #Write-Host "BaselineCompleteURL = $BaselineCompleteURL"
 
     # Verify all URLs are available
     $requiredUrls = @{
         'CheckModules' = $CheckModules
-        # Add DattoRMM to verification
         'DattoRMM' = $DattoRMM
         'OfficeURL' = $OfficeURL
         'AdobeURL' = $AdobeURL
@@ -398,8 +399,8 @@ try {
     }
 
     # Now decrypt Sophos installer links
-    Write-Host "`nLoading Sophos installer links..."
-    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug # Call new function
+    #Write-Host "`nLoading Sophos installer links..."
+    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug:$false # Call new function
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
     }
@@ -418,9 +419,9 @@ try {
     if ([string]::IsNullOrWhiteSpace($SophosAV)) {
         throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
     }
-    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV"
+    #Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV"
 
-    Write-Host "`nSuccessfully loaded all required URLs"
+    #Write-Host "`nSuccessfully loaded all required URLs"
 }
 catch {
     [System.Windows.Forms.MessageBox]::Show(
@@ -523,8 +524,7 @@ Add-Type -TypeDefinition @"
     }
 "@
 
-# Function to decrypt installer links
-
+#Read-Host -Prompt "Press Enter to continue"
 # Clear console window
 Clear-Host
 
@@ -1132,7 +1132,7 @@ $ProgressPreference = "SilentlyContinue"
 
 
 # Check for required modules
-Write-Host "`nPreparing required modules..." -NoNewline
+Write-Delayed "`nPreparing required modules..." -NewLine:$false
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
@@ -2213,7 +2213,7 @@ $sophosJob = Start-Job -ScriptBlock {
 } -ArgumentList $sophosScript
 
 # Wait for the Sophos installation to complete
-Write-Host "Installing Sophos AV..." -NoNewline
+Write-Delayed "Installing Sophos AV..." -NewLine:$false
 
 # Animation characters for the spinner
 $spinChars = '|', '/', '-', '\'
