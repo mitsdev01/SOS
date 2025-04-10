@@ -159,7 +159,9 @@ $installButton.Add_Click({
 
         # If Sophos is already installed, show message
         If ($SophosInstalled) {
+            $statusLabel.Text = "Existing Sophos installation detected."
             [System.Windows.Forms.MessageBox]::Show("Sophos is already installed.", "Information", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            
         } 
         Else {
             $statusLabel.Text = "Beginning the installation..."
