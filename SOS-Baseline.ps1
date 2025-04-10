@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.7.3                                           #
+#                                                 Version 1.7.1                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -23,7 +23,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.7.3
+    Version:        1.7.1
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,13 +46,13 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.3c"
+$ScriptVersion = "1.7.1"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
-<#Write-Delayed "Stage installer links..." -NewLine:$false
+#Write-Delayed "Stage installer links..." -NewLine:$false
 try {
     # Create temp directory if it doesn't exist
     if (-not (Test-Path "C:\temp")) {
@@ -83,72 +83,9 @@ catch {
         [System.Windows.Forms.MessageBoxIcon]::Error
     )
 }
-#>
 
-#Write-Delayed "Stage installer links..." -NewLine:$false
-try {
-    # Decrypt software download URLs first
-    #Write-Host "`nLoading software URLs..." | Out-Null
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug | Out-Null
-    if ($null -eq $softwareLinks) {
-        throw "Failed to decrypt software URLs"
-    }
 
-    # Assign URLs from decrypted data
-    #Write-Host "`nAssigning URLs..." | Out-Null
-    $CheckModules = $softwareLinks.CheckModules
-    $DattoRMM = $softwareLinks.DattoRMM
-    $OfficeURL = $softwareLinks.OfficeURL
-    $AdobeURL = $softwareLinks.AdobeURL
-    $Win11DebloatURL = $softwareLinks.Win11DebloatURL
-    $Win10DebloatURL = $softwareLinks.Win10DebloatURL
-    $SOSDebloatURL = $softwareLinks.SOSDebloatURL
-    $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
-    $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
 
-    # Verify all URLs are available
-    $requiredUrls = @{
-        'CheckModules' = $CheckModules
-        'DattoRMM' = $DattoRMM
-        'OfficeURL' = $OfficeURL
-        'AdobeURL' = $AdobeURL
-        'Win11DebloatURL' = $Win11DebloatURL
-        'Win10DebloatURL' = $Win10DebloatURL
-        'SOSDebloatURL' = $SOSDebloatURL
-        'UpdateWindowsURL' = $UpdateWindowsURL
-        'BaselineCompleteURL' = $BaselineCompleteURL
-    }
-
-    $missingUrls = $requiredUrls.GetEnumerator() | Where-Object { [string]::IsNullOrEmpty($_.Value) } | Select-Object -ExpandProperty Key
-    if ($missingUrls) {
-        throw "The following URLs are missing or empty:`n$($missingUrls -join "`n")"
-    }
-
-    # Now decrypt Sophos installer links
-    #Write-Host "`nLoading Sophos installer links..." | Out-Null
-    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug | Out-Null
-    if ($null -eq $sepLinks) {
-        throw "Failed to decrypt Sophos installer links"
-    }
-
-    $DefaultClientName = 'Atlanta Family Law Immigration' # CHANGE THIS AS NEEDED
-    $SophosAV = Get-SophosClientURL -ClientName $DefaultClientName -SophosLinksData $sepLinks
-    if ([string]::IsNullOrWhiteSpace($SophosAV)) {
-        throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
-    }
-    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
-
-    Write-Host "`nSuccessfully loaded all required URLs" | Out-Null
-}
-catch {
-    [System.Windows.Forms.MessageBox]::Show(
-        "Failed to process URLs.`n`nError: $_",
-        "URL Processing Error",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Error
-    )
-    exit 1
-}
 
 # Function to decrypt files using AES
 function Decrypt-SoftwareURLs {
@@ -414,40 +351,66 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug:$false
+    Write-Host "`nLoading software URLs..." | Out-Null
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug | Out-Null
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
 
     # Assign URLs from decrypted data
+    Write-Host "`nAssigning URLs..." | Out-Null
     $CheckModules = $softwareLinks.CheckModules
-    if ([string]::IsNullOrWhiteSpace($CheckModules)) {
-        throw "CheckModules URL is missing or empty"
+    $DattoRMM = $softwareLinks.DattoRMM
+    $OfficeURL = $softwareLinks.OfficeURL
+    $AdobeURL = $softwareLinks.AdobeURL
+    $Win11DebloatURL = $softwareLinks.Win11DebloatURL
+    $Win10DebloatURL = $softwareLinks.Win10DebloatURL
+    $SOSDebloatURL = $softwareLinks.SOSDebloatURL
+    $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
+    $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
+
+    # Verify all URLs are available
+    $requiredUrls = @{
+        'CheckModules' = $CheckModules
+        'DattoRMM' = $DattoRMM
+        'OfficeURL' = $OfficeURL
+        'AdobeURL' = $AdobeURL
+        'Win11DebloatURL' = $Win11DebloatURL
+        'Win10DebloatURL' = $Win10DebloatURL
+        'SOSDebloatURL' = $SOSDebloatURL
+        'UpdateWindowsURL' = $UpdateWindowsURL
+        'BaselineCompleteURL' = $BaselineCompleteURL
     }
 
-    # Debug: Output the URL being used
-    # Write-Host "Using CheckModules URL: $CheckModules"
-
-    # Run the module check in the background
-    $job = Start-Job -ScriptBlock {
-        param($moduleUrl)
-        Invoke-Expression (Invoke-RestMethod $moduleUrl)
-    } -ArgumentList $CheckModules
-
-    # Wait for the job to complete
-    Wait-Job -Job $job
-    $result = Receive-Job -Job $job
-    Remove-Job -Job $job -Force
-
-    # Check the result
-    if ($result -eq $null) {
-        throw "Failed to execute Check-Modules.ps1"
+    $missingUrls = $requiredUrls.GetEnumerator() | Where-Object { [string]::IsNullOrEmpty($_.Value) } | Select-Object -ExpandProperty Key
+    if ($missingUrls) {
+        throw "The following URLs are missing or empty:`n$($missingUrls -join "`n")"
     }
 
-    # Write-Host "Module check completed successfully"
+    # Now decrypt Sophos installer links
+    Write-Host "`nLoading Sophos installer links..." | Out-Null
+    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug | Out-Null
+    if ($null -eq $sepLinks) {
+        throw "Failed to decrypt Sophos installer links"
+    }
+
+    $DefaultClientName = 'Atlanta Family Law Immigration' # CHANGE THIS AS NEEDED
+    $SophosAV = Get-SophosClientURL -ClientName $DefaultClientName -SophosLinksData $sepLinks
+    if ([string]::IsNullOrWhiteSpace($SophosAV)) {
+        throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
+    }
+    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
+
+    Write-Host "`nSuccessfully loaded all required URLs" | Out-Null
 }
 catch {
-    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    [System.Windows.Forms.MessageBox]::Show(
+        "Failed to process URLs.`n`nError: $_",
+        "URL Processing Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+    exit 1
 }
 
 # Store system type for use in termination handler
@@ -1115,7 +1078,7 @@ function Set-UsoSvcAutomatic {
 ############################################################################################################
 #region Logging
 # Start transcript logging  
-Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
+Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
 $links = Decrypt-SophosLinks
 
 Clear-Host
@@ -1150,7 +1113,7 @@ $ProgressPreference = "SilentlyContinue"
 
 
 # Check for required modules
-Write-Delayed "`nPreparing required modules..." -NewLine:$false
+Write-Delayed "Preparing required modules..." -NewLine:$false
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
