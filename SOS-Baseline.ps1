@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.7.1                                           #
+#                                                 Version 1.6.8                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -23,7 +23,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.7.1
+    Version:        1.6.8
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,19 +46,20 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.1e"
+$ScriptVersion = "1.6.8"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
-#Write-Delayed "Stage installer links..." -NewLine:$false
+#Write-Delayed "Downloading installer links..." -NewLine:$false
 try {
     # Create temp directory if it doesn't exist
     if (-not (Test-Path "C:\temp")) {
         New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
     }
-    # Download links
+    
+    # Download the encrypted links file
     Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
     Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
     # Verify file exists and has content
@@ -70,8 +71,9 @@ try {
     if ($fileSize -eq 0) {
         throw "Downloaded encrypted links file is empty"
     }
-    Write-TaskComplete
-    Write-Log "Successfully downloaded installer links"
+    
+    #Write-TaskComplete
+    #Write-Log "Successfully downloaded installer links"
 }
 catch {
     Write-TaskFailed
@@ -84,11 +86,10 @@ catch {
     )
 }
 
-
 # Function to decrypt files using AES
 function Decrypt-SoftwareURLs {
     param (
-        [string]$FilePath = "$TempFolder\urls.enc", # Default to urls.enc
+        [string]$FilePath = "$TempFolder\\urls.enc", # Default to urls.enc
         [switch]$ShowDebug
     )
     
@@ -132,8 +133,8 @@ function Decrypt-SoftwareURLs {
             $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
 
             if ($ShowDebug) {
-                Write-Host "`nDecrypted JSON from $FilePath :" | Out-Null
-                Write-Host $json | Out-Null
+                Write-Host "`nDecrypted JSON from $FilePath :"
+                Write-Host $json
             }
             
             # Convert JSON to PowerShell object
@@ -141,10 +142,10 @@ function Decrypt-SoftwareURLs {
 
             # Debug: Show object type and properties
             if ($ShowDebug) {
-                Write-Host "`nObject Type: $($result.GetType().FullName)" | Out-Null
-                Write-Host "Available Properties:" | Out-Null
+                Write-Host "`nObject Type: $($result.GetType().FullName)"
+                Write-Host "Available Properties:"
                 $result.PSObject.Properties | ForEach-Object {
-                    Write-Host "  $($_.Name) = $($_.Value)" | Out-Null
+                    Write-Host "  $($_.Name) = $($_.Value)"
                 }
             }
 
@@ -156,7 +157,7 @@ function Decrypt-SoftwareURLs {
         }
     }
     catch {
-        Write-Error "Failed to decrypt file $FilePath : $_" | Out-Null
+        Write-Error "Failed to decrypt file $FilePath : $_"
         [System.Windows.Forms.MessageBox]::Show(
             "Failed to load installer links from $FilePath.`n`nError: $_",
             "Decryption Error",
@@ -214,8 +215,8 @@ function Decrypt-SophosLinks {
             $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
 
             if ($ShowDebug) {
-                Write-Host "`nDecrypted JSON from $FilePath :" | Out-Null
-                Write-Host $json | Out-Null
+                Write-Host "`nDecrypted JSON from $FilePath :"
+                Write-Host $json
             }
 
             # Convert JSON to PowerShell object (should be an OrderedDictionary structure)
@@ -223,11 +224,11 @@ function Decrypt-SophosLinks {
 
             # Debug: Show object type and properties
             if ($ShowDebug) {
-                Write-Host "`nObject Type: $($result.GetType().FullName)" | Out-Null
-                Write-Host "Available Properties/Keys:" | Out-Null
+                Write-Host "`nObject Type: $($result.GetType().FullName)"
+                Write-Host "Available Properties/Keys:"
                 # Iterate PSCustomObject properties correctly
                 $result.PSObject.Properties | ForEach-Object {
-                    Write-Host "  $($_.Name) = $($_.Value)" | Out-Null
+                    Write-Host "  $($_.Name) = $($_.Value)"
                 }
             }
 
@@ -240,7 +241,7 @@ function Decrypt-SophosLinks {
         }
     }
     catch {
-        Write-Error "Failed to decrypt Sophos links file $FilePath : $_" | Out-Null
+        Write-Error "Failed to decrypt Sophos links file $FilePath : $_"
         [System.Windows.Forms.MessageBox]::Show(
             "Failed to load Sophos links from $FilePath.`n`nError: $_",
             "Decryption Error",
@@ -331,7 +332,7 @@ function Get-SophosClientURL {
     )
 
     if ($null -eq $SophosLinksData) {
-        Write-Error "Sophos Links data is null. Cannot retrieve URL for '$ClientName'." | Out-Null
+        Write-Error "Sophos Links data is null. Cannot retrieve URL for '$ClientName'."
         return $null
     }
 
@@ -339,7 +340,7 @@ function Get-SophosClientURL {
     # Use PSObject.Properties for robust checking on PSCustomObject
     $prop = $SophosLinksData.PSObject.Properties[$ClientName]
     if ($null -eq $prop) {
-        Write-Error "Client '$ClientName' not found as a property in decrypted Sophos Links data." | Out-Null
+        Write-Error "Client '$ClientName' not found as a property in decrypted Sophos Links data."
         return $null
     }
 
@@ -349,27 +350,38 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    #Write-Host "`nLoading software URLs..." | Out-Null
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug | Out-Null
+    Write-Host "`nLoading software URLs..."
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug # Call renamed function
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
 
     # Assign URLs from decrypted data
-    #Write-Host "`nAssigning URLs..." | Out-Null
+    Write-Host "`nAssigning URLs..."
     $CheckModules = $softwareLinks.CheckModules
+    Write-Host "CheckModules = $CheckModules"
+    # Assign DattoRMM URL
     $DattoRMM = $softwareLinks.DattoRMM
+    Write-Host "DattoRMM = $DattoRMM"
     $OfficeURL = $softwareLinks.OfficeURL
+    Write-Host "OfficeURL = $OfficeURL"
     $AdobeURL = $softwareLinks.AdobeURL
+    Write-Host "AdobeURL = $AdobeURL"
     $Win11DebloatURL = $softwareLinks.Win11DebloatURL
+    Write-Host "Win11DebloatURL = $Win11DebloatURL"
     $Win10DebloatURL = $softwareLinks.Win10DebloatURL
+    Write-Host "Win10DebloatURL = $Win10DebloatURL"
     $SOSDebloatURL = $softwareLinks.SOSDebloatURL
+    Write-Host "SOSDebloatURL = $SOSDebloatURL"
     $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
+    Write-Host "UpdateWindowsURL = $UpdateWindowsURL"
     $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
+    Write-Host "BaselineCompleteURL = $BaselineCompleteURL"
 
     # Verify all URLs are available
     $requiredUrls = @{
         'CheckModules' = $CheckModules
+        # Add DattoRMM to verification
         'DattoRMM' = $DattoRMM
         'OfficeURL' = $OfficeURL
         'AdobeURL' = $AdobeURL
@@ -386,20 +398,29 @@ try {
     }
 
     # Now decrypt Sophos installer links
-    #Write-Host "`nLoading Sophos installer links..." | Out-Null
-    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug | Out-Null
+    Write-Host "`nLoading Sophos installer links..."
+    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug # Call new function
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
     }
 
+    # Example: Get a specific Sophos URL (replace 'YourClientName' with actual logic if needed)
+    # $SophosAV = Get-SophosClientURL -ClientName 'YourClientName' -SophosLinksData $sepLinks
+    # if ($null -eq $SophosAV) {
+    #    throw "Failed to get Sophos AV URL for 'YourClientName'"
+    # }
+    # For now, assuming you might need a default or specific one - This needs clarification based on how you pick the client
+    # Placeholder: Using a default key if one exists, otherwise error
+    # This section needs refinement based on how you determine WHICH Sophos link to use.
+    # For the example, let's assume you need the 'Atlanta Family Law Immigration' link for testing
     $DefaultClientName = 'Atlanta Family Law Immigration' # CHANGE THIS AS NEEDED
     $SophosAV = Get-SophosClientURL -ClientName $DefaultClientName -SophosLinksData $sepLinks
     if ([string]::IsNullOrWhiteSpace($SophosAV)) {
         throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
     }
-    #Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
+    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV"
 
-    #Write-Host "`nSuccessfully loaded all required URLs" | Out-Null
+    Write-Host "`nSuccessfully loaded all required URLs"
 }
 catch {
     [System.Windows.Forms.MessageBox]::Show(
@@ -1076,7 +1097,7 @@ function Set-UsoSvcAutomatic {
 ############################################################################################################
 #region Logging
 # Start transcript logging  
-Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt" | Out-Null
+Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
 $links = Decrypt-SophosLinks
 
 Clear-Host
@@ -1111,7 +1132,7 @@ $ProgressPreference = "SilentlyContinue"
 
 
 # Check for required modules
-Write-Delayed "Preparing required modules..." -NewLine:$false
+Write-Host "`nPreparing required modules..." -NoNewline
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
@@ -2192,7 +2213,7 @@ $sophosJob = Start-Job -ScriptBlock {
 } -ArgumentList $sophosScript
 
 # Wait for the Sophos installation to complete
-Write-Delayed "Installing Sophos AV..." -NewLine:$false
+Write-Host "Installing Sophos AV..." -NoNewline
 
 # Animation characters for the spinner
 $spinChars = '|', '/', '-', '\'
