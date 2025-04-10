@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.6.9b"
+$ScriptVersion = "1.6.9d"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -60,8 +60,10 @@ try {
     }
     
     # Download the encrypted links file
+    $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
     Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
+    $ProgressPreference = 'Continue'
     # Verify file exists and has content
     if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
         throw "Failed to download encrypted links file"
@@ -350,7 +352,7 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    Write-Host "`nLoading software URLs..."
+    #Write-Host "`nLoading software URLs..."
     $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
