@@ -71,6 +71,10 @@ function Encrypt-InstallerLinks {
 
     # Convert the dictionary to JSON
     $json = $InstallerLinks | ConvertTo-Json -Compress
+    
+    # Debug: Show JSON data
+    Write-Host "JSON to encrypt:"
+    Write-Host $json
 
     # Convert the JSON to bytes
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
@@ -88,6 +92,13 @@ function Encrypt-InstallerLinks {
         0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
         0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
     )
+
+    # Debug: Show key and IV (hex representation)
+    Write-Host "Encryption Key (hex):" 
+    $key | ForEach-Object { Write-Host -NoNewline "$($_.ToString('X2')) " }
+    Write-Host "`nIV (hex):"
+    $iv | ForEach-Object { Write-Host -NoNewline "$($_.ToString('X2')) " }
+    Write-Host ""
 
     # Create AES object
     $aes = [System.Security.Cryptography.Aes]::Create()
@@ -110,6 +121,7 @@ function Encrypt-InstallerLinks {
         [System.IO.File]::WriteAllBytes($OutputFile, $result)
 
         Write-Host "Sophos installer links have been encrypted and saved to $OutputFile" -ForegroundColor Green
+        Write-Host "Output file size: $((Get-Item $OutputFile).Length) bytes"
     }
     finally {
         if ($encryptor) { $encryptor.Dispose() }
