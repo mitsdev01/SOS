@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.6.9c"
+$ScriptVersion = "1.6.9"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -350,8 +350,8 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    #Write-Host "`nLoading software URLs..."
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" | Out-Null # Call renamed function
+    Write-Host "`nLoading software URLs..."
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
