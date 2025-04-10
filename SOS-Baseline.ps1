@@ -144,10 +144,10 @@ function Decrypt-SoftwareURLs {
 
             # Debug: Show object type and properties
             if ($ShowDebug) {
-                Write-Host "`nObject Type: $($result.GetType().FullName)"
-                Write-Host "Available Properties:"
+                Write-Host "`nObject Type: $($result.GetType().FullName)" | Out-Null
+                Write-Host "Available Properties:" | Out-Null
                 $result.PSObject.Properties | ForEach-Object {
-                    Write-Host "  $($_.Name) = $($_.Value)"
+                    Write-Host "  $($_.Name) = $($_.Value)" | Out-Null
                 }
             }
 
