@@ -414,63 +414,40 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug:$false | Out-Null
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug:$true
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
 
     # Assign URLs from decrypted data
     $CheckModules = $softwareLinks.CheckModules
-    $DattoRMM = $softwareLinks.DattoRMM
-    $OfficeURL = $softwareLinks.OfficeURL
-    $AdobeURL = $softwareLinks.AdobeURL
-    $Win11DebloatURL = $softwareLinks.Win11DebloatURL
-    $Win10DebloatURL = $softwareLinks.Win10DebloatURL
-    $SOSDebloatURL = $softwareLinks.SOSDebloatURL
-    $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
-    $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
-
-    # Verify all URLs are available
-    $requiredUrls = @{
-        'CheckModules' = $CheckModules
-        'DattoRMM' = $DattoRMM
-        'OfficeURL' = $OfficeURL
-        'AdobeURL' = $AdobeURL
-        'Win11DebloatURL' = $Win11DebloatURL
-        'Win10DebloatURL' = $Win10DebloatURL
-        'SOSDebloatURL' = $SOSDebloatURL
-        'UpdateWindowsURL' = $UpdateWindowsURL
-        'BaselineCompleteURL' = $BaselineCompleteURL
+    if ([string]::IsNullOrWhiteSpace($CheckModules)) {
+        throw "CheckModules URL is missing or empty"
     }
 
-    $missingUrls = $requiredUrls.GetEnumerator() | Where-Object { [string]::IsNullOrEmpty($_.Value) } | Select-Object -ExpandProperty Key
-    if ($missingUrls) {
-        throw "The following URLs are missing or empty:`n$($missingUrls -join "`n")"
+    # Debug: Output the URL being used
+    Write-Host "Using CheckModules URL: $CheckModules"
+
+    # Run the module check in the background
+    $job = Start-Job -ScriptBlock {
+        param($moduleUrl)
+        Invoke-Expression (Invoke-RestMethod $moduleUrl)
+    } -ArgumentList $CheckModules
+
+    # Wait for the job to complete
+    Wait-Job -Job $job
+    $result = Receive-Job -Job $job
+    Remove-Job -Job $job -Force
+
+    # Check the result
+    if ($result -eq $null) {
+        throw "Failed to execute Check-Modules.ps1"
     }
 
-    # Now decrypt Sophos installer links
-    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug:$false | Out-Null
-    if ($null -eq $sepLinks) {
-        throw "Failed to decrypt Sophos installer links"
-    }
-
-    $DefaultClientName = 'Atlanta Family Law Immigration' # CHANGE THIS AS NEEDED
-    $SophosAV = Get-SophosClientURL -ClientName $DefaultClientName -SophosLinksData $sepLinks
-    if ([string]::IsNullOrWhiteSpace($SophosAV)) {
-        throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
-    }
-
-    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
-    Write-Host "`nSuccessfully loaded all required URLs" | Out-Null
+    Write-Host "Module check completed successfully"
 }
 catch {
-    [System.Windows.Forms.MessageBox]::Show(
-        "Failed to process URLs.`n`nError: $_",
-        "URL Processing Error",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Error
-    )
-    exit 1
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
 }
 
 # Store system type for use in termination handler
@@ -1173,7 +1150,7 @@ $ProgressPreference = "SilentlyContinue"
 
 
 # Check for required modules
-Write-Host "`nPreparing required modules..." -NoNewline
+Write-Delayed "`nPreparing required modules..." -NewLine:$false
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
