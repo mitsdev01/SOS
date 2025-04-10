@@ -2358,6 +2358,7 @@ if (Is-Windows11) {
         Start-Sleep -Seconds 2
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
+        Start-Sleep -Seconds 30
         Write-Log "Windows 11 Debloat completed successfully."
         Write-TaskComplete
     }
@@ -2381,7 +2382,8 @@ if (Is-Windows10) {
         Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\SOS-Debloat\SOS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -ShowKnownFileExt -Silent'"
         Start-Sleep -Seconds 2
         Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
+        [System.Windows.Forms.SendKeys]::SendWait('%{TAB}')
+        Start-Sleep -Seconds 30
         Write-Log "Windows 10 Debloat completed successfully."
         Write-TaskComplete
     }
