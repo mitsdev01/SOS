@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.1"
+$ScriptVersion = "1.7.1e"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -85,12 +85,10 @@ catch {
 }
 
 
-
-
 # Function to decrypt files using AES
 function Decrypt-SoftwareURLs {
     param (
-        [string]$FilePath = "$TempFolder\\urls.enc", # Default to urls.enc
+        [string]$FilePath = "$TempFolder\urls.enc", # Default to urls.enc
         [switch]$ShowDebug
     )
     
