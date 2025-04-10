@@ -52,7 +52,7 @@ $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
-#Write-Delayed "Stage installer links..." -NewLine:$false
+<#Write-Delayed "Stage installer links..." -NewLine:$false
 try {
     # Create temp directory if it doesn't exist
     if (-not (Test-Path "C:\temp")) {
@@ -70,8 +70,51 @@ try {
     if ($fileSize -eq 0) {
         throw "Downloaded encrypted links file is empty"
     }
-    #Write-TaskComplete
-    #Write-Log "Successfully downloaded installer links"
+    Write-TaskComplete
+    Write-Log "Successfully downloaded installer links"
+}
+catch {
+    Write-TaskFailed
+    Write-Log "Failed to download installer links: $_"
+    [System.Windows.Forms.MessageBox]::Show(
+        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
+        "Download Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+}
+#>
+
+Write-Delayed "Stage installer links..." -NewLine:$false
+try {
+    # Create temp directory if it doesn't exist
+    if (-not (Test-Path "C:\temp")) {
+        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
+    }
+    
+    # Download links
+    $urls = @(
+        "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc",
+        "https://axcientrestore.blob.core.windows.net/win11/urls.enc"
+    )
+    
+    foreach ($url in $urls) {
+        $fileName = "C:\temp\" + [System.IO.Path]::GetFileName($url)
+        Invoke-WebRequest -Uri $url -OutFile $fileName -ErrorAction Stop | Out-Null
+        
+        # Verify file exists and has content
+        if (-not (Test-Path $fileName)) {
+            throw "Failed to download $fileName"
+        }
+        
+        $fileSize = (Get-Item $fileName).Length
+        if ($fileSize -eq 0) {
+            throw "Downloaded file $fileName is empty"
+        }
+    }
+    
+    Write-TaskComplete
+    Write-Log "Successfully downloaded installer links"
 }
 catch {
     Write-TaskFailed
