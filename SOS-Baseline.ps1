@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.3"
+$ScriptVersion = "1.7.3a"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -414,14 +414,12 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    Write-Host "`nLoading software URLs..." | Out-Null
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug | Out-Null
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug:$false | Out-Null
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
 
     # Assign URLs from decrypted data
-    Write-Host "`nAssigning URLs..." | Out-Null
     $CheckModules = $softwareLinks.CheckModules
     $DattoRMM = $softwareLinks.DattoRMM
     $OfficeURL = $softwareLinks.OfficeURL
@@ -451,8 +449,7 @@ try {
     }
 
     # Now decrypt Sophos installer links
-    Write-Host "`nLoading Sophos installer links..." | Out-Null
-    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug | Out-Null
+    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug:$false | Out-Null
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
     }
@@ -462,8 +459,8 @@ try {
     if ([string]::IsNullOrWhiteSpace($SophosAV)) {
         throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
     }
-    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
 
+    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
     Write-Host "`nSuccessfully loaded all required URLs" | Out-Null
 }
 catch {
