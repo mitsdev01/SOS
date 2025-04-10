@@ -135,8 +135,8 @@ function Decrypt-SoftwareURLs {
             $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
 
             if ($ShowDebug) {
-                Write-Host "`nDecrypted JSON from $FilePath :"
-                Write-Host $json
+                Write-Host "`nDecrypted JSON from $FilePath :"  | Out-Null
+                Write-Host $json | Out-Null
             }
             
             # Convert JSON to PowerShell object
