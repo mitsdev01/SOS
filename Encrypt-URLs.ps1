@@ -66,6 +66,7 @@ function Encrypt-Data {
 # Create software URLs data
 $softwareLinks = @{
     CheckModules = "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1"
+    DattoRMM = "https://concord.centrastage.net/csm/profile/downloadAgent/ce8a0a8d-84bd-4baa-850a-6f46e9c37dfc"
     OfficeURL = "https://axcientrestore.blob.core.windows.net/win11/OfficeSetup.exe"
     AdobeURL = "https://axcientrestore.blob.core.windows.net/win11/AcroRdrDC2500120432_en_US.exe"
     Win11DebloatURL = "https://axcientrestore.blob.core.windows.net/win11/SOS-Debloat.zip"
@@ -138,6 +139,7 @@ function Decrypt-InstallerLinks {
 # $links = Decrypt-InstallerLinks
 # $SophosAV = $links.SophosAV
 # $CheckModules = $links.CheckModules
+# $DattoRMM = $links.DattoRMM
 # $OfficeURL = $links.OfficeURL
 # $AdobeURL = $links.AdobeURL
 # $Win11DebloatURL = $links.Win11DebloatURL

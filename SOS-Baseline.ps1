@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.6.4                                           #
+#                                                 Version 1.6.6                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -22,7 +22,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.6.4
+    Version:        1.6.6
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -45,16 +45,50 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.6.4"
+$ScriptVersion = "1.6.6"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
+#Write-Delayed "Downloading installer links..." -NewLine:$false
+try {
+    # Create temp directory if it doesn't exist
+    if (-not (Test-Path "C:\temp")) {
+        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
+    }
+    
+    # Download the encrypted links file
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
+    # Verify file exists and has content
+    if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
+        throw "Failed to download encrypted links file"
+    }
+    
+    $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
+    if ($fileSize -eq 0) {
+        throw "Downloaded encrypted links file is empty"
+    }
+    
+    #Write-TaskComplete
+    #Write-Log "Successfully downloaded installer links"
+}
+catch {
+    Write-TaskFailed
+    Write-Log "Failed to download installer links: $_"
+    [System.Windows.Forms.MessageBox]::Show(
+        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
+        "Download Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+}
+
 # Function to decrypt files using AES
-function Decrypt-File {
+function Decrypt-SoftwareURLs {
     param (
-        [string]$FilePath,
+        [string]$FilePath = "$TempFolder\\urls.enc", # Default to urls.enc
         [switch]$ShowDebug
     )
     
@@ -125,6 +159,90 @@ function Decrypt-File {
         Write-Error "Failed to decrypt file $FilePath : $_"
         [System.Windows.Forms.MessageBox]::Show(
             "Failed to load installer links from $FilePath.`n`nError: $_",
+            "Decryption Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        )
+        return $null
+    }
+}
+
+# Function to decrypt Sophos links file using AES
+function Decrypt-SophosLinks {
+    param (
+        [string]$FilePath = "$TempFolder\\SEPLinks.enc", # Default to SEPLinks.enc
+        [switch]$ShowDebug
+    )
+
+    try {
+        # Create a fixed encryption key (32 bytes for AES-256) - Ensure this matches the encryption key
+        $key = [byte[]]@(
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
+        )
+
+        # Read the encrypted file
+        if (-not (Test-Path $FilePath)) {
+            throw "Encrypted Sophos links file not found: $FilePath"
+        }
+
+        $encryptedData = [System.IO.File]::ReadAllBytes($FilePath)
+
+        # Extract IV (first 16 bytes)
+        $iv = $encryptedData[0..15]
+
+        # Extract encrypted data (remaining bytes)
+        $encryptedBytes = $encryptedData[16..($encryptedData.Length - 1)]
+
+        # Create AES object
+        $aes = [System.Security.Cryptography.Aes]::Create()
+        $aes.Key = $key
+        $aes.IV = $iv
+        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+
+        try {
+            # Create decryptor
+            $decryptor = $aes.CreateDecryptor()
+
+            # Decrypt the data
+            $decryptedBytes = $decryptor.TransformFinalBlock($encryptedBytes, 0, $encryptedBytes.Length)
+
+            # Convert bytes to string
+            $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
+
+            if ($ShowDebug) {
+                Write-Host "`nDecrypted JSON from $FilePath :"
+                Write-Host $json
+            }
+
+            # Convert JSON to PowerShell object (should be an OrderedDictionary structure)
+            $result = $json | ConvertFrom-Json # REMOVED -AsHashtable for PS 5.1 compatibility
+
+            # Debug: Show object type and properties
+            if ($ShowDebug) {
+                Write-Host "`nObject Type: $($result.GetType().FullName)"
+                Write-Host "Available Properties/Keys:"
+                # Iterate PSCustomObject properties correctly
+                $result.PSObject.Properties | ForEach-Object {
+                    Write-Host "  $($_.Name) = $($_.Value)"
+                }
+            }
+
+            # Return the Hashtable/Dictionary
+            return $result
+        }
+        finally {
+            if ($decryptor) { $decryptor.Dispose() }
+            if ($aes) { $aes.Dispose() }
+        }
+    }
+    catch {
+        Write-Error "Failed to decrypt Sophos links file $FilePath : $_"
+        [System.Windows.Forms.MessageBox]::Show(
+            "Failed to load Sophos links from $FilePath.`n`nError: $_",
             "Decryption Error",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Error
@@ -208,21 +326,31 @@ function Decrypt-InstallerLinks {
 function Get-SophosClientURL {
     param (
         [string]$ClientName,
-        [object]$SepLinks
+        # Remove Hashtable constraint, accept PSCustomObject
+        [object]$SophosLinksData
     )
-    
-    if ($null -eq $SepLinks -or $null -eq $SepLinks.Links -or -not $SepLinks.Links.ContainsKey($ClientName)) {
-        Write-Error "Client '$ClientName' not found in SEPLinks"
+
+    if ($null -eq $SophosLinksData) {
+        Write-Error "Sophos Links data is null. Cannot retrieve URL for '$ClientName'."
         return $null
     }
-    
-    return $SepLinks.Links[$ClientName]
+
+    # Access the URL directly using the client name as the key
+    # Use PSObject.Properties for robust checking on PSCustomObject
+    $prop = $SophosLinksData.PSObject.Properties[$ClientName]
+    if ($null -eq $prop) {
+        Write-Error "Client '$ClientName' not found as a property in decrypted Sophos Links data."
+        return $null
+    }
+
+    # Return the value of the property
+    return $prop.Value
 }
 
 try {
     # Decrypt software download URLs first
     Write-Host "`nLoading software URLs..."
-    $softwareLinks = Decrypt-File -FilePath "$TempFolder\urls.enc" -ShowDebug
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug # Call renamed function
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
@@ -231,6 +359,9 @@ try {
     Write-Host "`nAssigning URLs..."
     $CheckModules = $softwareLinks.CheckModules
     Write-Host "CheckModules = $CheckModules"
+    # Assign DattoRMM URL
+    $DattoRMM = $softwareLinks.DattoRMM
+    Write-Host "DattoRMM = $DattoRMM"
     $OfficeURL = $softwareLinks.OfficeURL
     Write-Host "OfficeURL = $OfficeURL"
     $AdobeURL = $softwareLinks.AdobeURL
@@ -249,6 +380,8 @@ try {
     # Verify all URLs are available
     $requiredUrls = @{
         'CheckModules' = $CheckModules
+        # Add DattoRMM to verification
+        'DattoRMM' = $DattoRMM
         'OfficeURL' = $OfficeURL
         'AdobeURL' = $AdobeURL
         'Win11DebloatURL' = $Win11DebloatURL
@@ -265,10 +398,26 @@ try {
 
     # Now decrypt Sophos installer links
     Write-Host "`nLoading Sophos installer links..."
-    $sepLinks = Decrypt-File -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug
+    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug # Call new function
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
     }
+
+    # Example: Get a specific Sophos URL (replace 'YourClientName' with actual logic if needed)
+    # $SophosAV = Get-SophosClientURL -ClientName 'YourClientName' -SophosLinksData $sepLinks
+    # if ($null -eq $SophosAV) {
+    #    throw "Failed to get Sophos AV URL for 'YourClientName'"
+    # }
+    # For now, assuming you might need a default or specific one - This needs clarification based on how you pick the client
+    # Placeholder: Using a default key if one exists, otherwise error
+    # This section needs refinement based on how you determine WHICH Sophos link to use.
+    # For the example, let's assume you need the 'Atlanta Family Law Immigration' link for testing
+    $DefaultClientName = 'Atlanta Family Law Immigration' # CHANGE THIS AS NEEDED
+    $SophosAV = Get-SophosClientURL -ClientName $DefaultClientName -SophosLinksData $sepLinks
+    if ([string]::IsNullOrWhiteSpace($SophosAV)) {
+        throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
+    }
+    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV"
 
     Write-Host "`nSuccessfully loaded all required URLs"
 }
@@ -821,7 +970,7 @@ function Get-DecryptedURL {
     }
 }
 
-function Decrypt-InstallerLinks {
+function Decrypt-SetupLinks {
     param (
         [string]$InputFile = "c:\temp\urls.enc"
     )
@@ -948,7 +1097,8 @@ function Set-UsoSvcAutomatic {
 #region Logging
 # Start transcript logging  
 Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
-$links = Decrypt-InstallerLinks
+$links = Decrypt-SophosLinks
+
 Clear-Host
 #endregion Logging
 
@@ -978,39 +1128,7 @@ Start-Sleep -Seconds 2
 Write-Log "Automated workstation baseline has started"
 
 $ProgressPreference = "SilentlyContinue"
-#Write-Delayed "Downloading installer links..." -NewLine:$false
-try {
-    # Create temp directory if it doesn't exist
-    if (-not (Test-Path "C:\temp")) {
-        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
-    }
-    
-    # Download the encrypted links file
-    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
-    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
-    # Verify file exists and has content
-    if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
-        throw "Failed to download encrypted links file"
-    }
-    
-    $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
-    if ($fileSize -eq 0) {
-        throw "Downloaded encrypted links file is empty"
-    }
-    
-    Write-TaskComplete
-    Write-Log "Successfully downloaded installer links"
-}
-catch {
-    Write-TaskFailed
-    Write-Log "Failed to download installer links: $_"
-    [System.Windows.Forms.MessageBox]::Show(
-        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
-        "Download Error",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Error
-    )
-}
+
 
 # Check for required modules
 Write-Host "`nPreparing required modules..." -NoNewline
@@ -1806,7 +1924,7 @@ if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
     }
 
     # Download and install using spinner animation
-    Show-SpinnerWithProgressBar -Message "Downloading Datto RMM Agent..." -URL $installerUri -OutFile $file -DoneMessage " done."
+    Show-SpinnerWithProgressBar -Message "Downloading Datto RMM Agent..." -URL $DattoRMM -OutFile $file -DoneMessage " done."
     
     # Verify the file exists and has content
     if ((Test-Path $file) -and (Get-Item $file).Length -gt 0) {
@@ -1932,7 +2050,8 @@ if ($O365) {
 } else {
     $OfficePath = "c:\temp\OfficeSetup.exe"
     if (-not (Test-Path $OfficePath)) {
-        $OfficeURL = Get-DecryptedURL -Key "OfficeURL"
+        # $OfficeURL = Get-DecryptedURL -Key "OfficeURL" # REMOVED - Use variable loaded earlier
+        if ([string]::IsNullOrWhiteSpace($OfficeURL)) { throw "OfficeURL is not loaded." } # Added check
         
         # Use spinner with progress bar for download
         Show-SpinnerWithProgressBar -Message "Downloading Microsoft Office 365..." -URL $OfficeURL -OutFile $OfficePath -DoneMessage " done."
@@ -1982,6 +2101,9 @@ if ($O365) {
 
 # URL and file path for the Acrobat Reader installer
 $AcroFilePath = "C:\temp\AcroRdrDC2500120432_en_US.exe"
+# Use variable loaded earlier for Adobe URL
+# $URL = Get-DecryptedURL -Key "AcrobatURL" # REMOVED
+if ([string]::IsNullOrWhiteSpace($AdobeURL)) { throw "AdobeURL is not loaded." } # Added check
 
 # First, check if Adobe Acrobat Reader is already installed
 $acrobatPath = "${env:ProgramFiles(x86)}\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe"
@@ -1999,15 +2121,15 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
     } 
 
     try {
-        # Get the URL from encrypted file
-        $URL = Get-DecryptedURL -Key "AcrobatURL"
+        # Get the URL from encrypted file - REMOVED (already have $AdobeURL)
+        # $URL = Get-DecryptedURL -Key "AcrobatURL"
         
         # Get the file size first
-        $response = Invoke-WebRequest -Uri $URL -Method Head -ErrorAction Stop
+        $response = Invoke-WebRequest -Uri $AdobeURL -Method Head -ErrorAction Stop
         $fileSize = $response.Headers['Content-Length']
         
         # Download the Acrobat Reader installer with spinner AND progress bar
-        Show-SpinnerWithProgressBar -Message "Downloading Adobe Acrobat Reader ($fileSize bytes)..." -URL $URL -OutFile $AcroFilePath -DoneMessage " done."
+        Show-SpinnerWithProgressBar -Message "Downloading Adobe Acrobat Reader ($fileSize bytes)..." -URL $AdobeURL -OutFile $AcroFilePath -DoneMessage " done."
         
         $FileSize = (Get-Item $AcroFilePath).Length
         
@@ -2076,13 +2198,14 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 
 
 ############################################################################################################
-#                                           Sophos Installation                                            #
+#                                           Sophos Installation                                           #
 #                                                                                                          #
 ############################################################################################################
 #region Sophos Install
 # Run the Sophos installation script and wait for it to complete before continuing
-
-$sophosScript = (Invoke-WebRequest -Uri $SophosAV -UseBasicParsing).Content
+$ProgressPreference = "SilentlyContinue"
+#Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
+$sophosScript = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1" -UseBasicParsing).Content
 $sophosJob = Start-Job -ScriptBlock { 
     param($scriptContent)
     Invoke-Expression $scriptContent
@@ -2136,7 +2259,7 @@ Write-Host " done." -ForegroundColor Green -NoNewline
 # Retrieve and remove the job
 Receive-Job -Job $sophosJob
 Remove-Job -Job $sophosJob -Force
-Remove-item -path "C:\temp\url " | Out-Null
+Remove-item -path "C:\temp\SEPLinks.enc" | Out-Null
 $ProgressPreference = "Continue"
 # Start a new line
 Write-Host ""
@@ -2151,14 +2274,18 @@ Write-Host ""
 
 Write-Delayed "Initiating cleaning up of Windows bloatware..." -NewLine:$false
 
+# Use variables loaded earlier
+if ([string]::IsNullOrWhiteSpace($Win11DebloatURL)) { throw "Win11DebloatURL is not loaded." }
+if ([string]::IsNullOrWhiteSpace($Win10DebloatURL)) { throw "Win10DebloatURL is not loaded." } # Note: Currently points to same zip as Win11
+
 # Trigger SOS Debloat for Windows 11
 if (Is-Windows11) {
     try {
-        $Win11DebloatURL = Get-DecryptedURL -Key "Win11DebloatURL"
+        # $Win11DebloatURL = Get-DecryptedURL -Key "Win11DebloatURL" # REMOVED
         $Win11DebloatFile = "c:\temp\SOS-Debloat.zip"
         Invoke-WebRequest -Uri $Win11DebloatURL -OutFile $Win11DebloatFile -UseBasicParsing -ErrorAction Stop 
         Start-Sleep -seconds 2
-        Expand-Archive $Win11DebloatFile -DestinationPath 'c:\temp\SOS-Debloat'
+        Expand-Archive $Win11DebloatFile -DestinationPath 'c:\temp\SOS-Debloat' -Force # Added -Force
         Start-Sleep -Seconds 2
         Start-Process powershell -ArgumentList "-noexit","-Command Invoke-Expression -Command '& ''C:\temp\SOS-Debloat\SOS-Debloat.ps1'' -RemoveApps -DisableBing -RemoveGamingApps -ClearStart -DisableLockscreenTips -DisableSuggestions -ShowKnownFileExt -TaskbarAlignLeft -HideSearchTb -DisableWidgets -Silent'"
         Start-Sleep -Seconds 2
@@ -2178,9 +2305,9 @@ else {
 # Trigger SOS Debloat for Windows 10
 if (Is-Windows10) {
     try {
-        $SOSDebloatURL = Get-DecryptedURL -Key "Win10DebloatURL"
+        # $SOSDebloatURL = Get-DecryptedURL -Key "Win10DebloatURL" # REMOVED (Uses Win10DebloatURL variable now)
         $SOSDebloatFile = "c:\temp\SOS-Debloat.zip"
-        Invoke-WebRequest -Uri $SOSDebloatURL -OutFile $SOSDebloatFile -UseBasicParsing -ErrorAction Stop 
+        Invoke-WebRequest -Uri $Win10DebloatURL -OutFile $SOSDebloatFile -UseBasicParsing -ErrorAction Stop # Use Win10DebloatURL
         Start-Sleep -seconds 2
         Expand-Archive $SOSDebloatFile -DestinationPath c:\temp\SOS-Debloat -Force
         Start-Sleep -Seconds 2
@@ -2392,8 +2519,9 @@ if ($service.Status -eq 'Running') {
 Write-Delayed "Checking for Windows Updates..." -NewLine:$false
 Set-UsoSvcAutomatic
 $ProgressPreference = 'SilentlyContinue'
-$WindowsUpdateURL = Get-DecryptedURL -Key "WindowsUpdate"
-Invoke-WebRequest -Uri $WindowsUpdateURL -OutFile "c:\temp\update_windows.ps1"
+# $WindowsUpdateURL = Get-DecryptedURL -Key "WindowsUpdate" # REMOVED - Use variable loaded earlier
+if ([string]::IsNullOrWhiteSpace($UpdateWindowsURL)) { throw "UpdateWindowsURL is not loaded." } # Added check
+Invoke-WebRequest -Uri $UpdateWindowsURL -OutFile "c:\temp\update_windows.ps1" # Use UpdateWindowsURL
 
 $ProgressPreference = 'Continue'
 if (Test-Path "c:\temp\update_windows.ps1") {
@@ -2689,7 +2817,8 @@ Write-Host -ForegroundColor "Green" $Padding
 Write-Host -ForegroundColor "Cyan" "Logs are available at:"
 Write-Host "  * $LogFile"
 Write-Host "  * $TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
-$BaselineCompleteURL = Get-DecryptedURL -Key "BaselineComplete"
+# $BaselineCompleteURL = Get-DecryptedURL -Key "BaselineComplete" # REMOVED - Use variable loaded earlier
+if ([string]::IsNullOrWhiteSpace($BaselineCompleteURL)) { throw "BaselineCompleteURL is not loaded." } # Added check
 Invoke-WebRequest -uri $BaselineCompleteURL -OutFile "c:\temp\BaselineComplete.ps1"
 $scriptPath = "c:\temp\BaselineComplete.ps1"
 Invoke-Expression "start powershell -ArgumentList '-noexit','-File $scriptPath'"
