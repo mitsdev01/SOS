@@ -391,38 +391,27 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    Write-Host "`nLoading software URLs..."
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug # Call renamed function
+    Write-Host "`nLoading software URLs..." | Out-Null
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug | Out-Null
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
 
     # Assign URLs from decrypted data
-    Write-Host "`nAssigning URLs..."
+    Write-Host "`nAssigning URLs..." | Out-Null
     $CheckModules = $softwareLinks.CheckModules
-    Write-Host "CheckModules = $CheckModules"
-    # Assign DattoRMM URL
     $DattoRMM = $softwareLinks.DattoRMM
-    Write-Host "DattoRMM = $DattoRMM"
     $OfficeURL = $softwareLinks.OfficeURL
-    Write-Host "OfficeURL = $OfficeURL"
     $AdobeURL = $softwareLinks.AdobeURL
-    Write-Host "AdobeURL = $AdobeURL"
     $Win11DebloatURL = $softwareLinks.Win11DebloatURL
-    Write-Host "Win11DebloatURL = $Win11DebloatURL"
     $Win10DebloatURL = $softwareLinks.Win10DebloatURL
-    Write-Host "Win10DebloatURL = $Win10DebloatURL"
     $SOSDebloatURL = $softwareLinks.SOSDebloatURL
-    Write-Host "SOSDebloatURL = $SOSDebloatURL"
     $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
-    Write-Host "UpdateWindowsURL = $UpdateWindowsURL"
     $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
-    Write-Host "BaselineCompleteURL = $BaselineCompleteURL"
 
     # Verify all URLs are available
     $requiredUrls = @{
         'CheckModules' = $CheckModules
-        # Add DattoRMM to verification
         'DattoRMM' = $DattoRMM
         'OfficeURL' = $OfficeURL
         'AdobeURL' = $AdobeURL
@@ -439,29 +428,20 @@ try {
     }
 
     # Now decrypt Sophos installer links
-    Write-Host "`nLoading Sophos installer links..."
-    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug # Call new function
+    Write-Host "`nLoading Sophos installer links..." | Out-Null
+    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug | Out-Null
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
     }
 
-    # Example: Get a specific Sophos URL (replace 'YourClientName' with actual logic if needed)
-    # $SophosAV = Get-SophosClientURL -ClientName 'YourClientName' -SophosLinksData $sepLinks
-    # if ($null -eq $SophosAV) {
-    #    throw "Failed to get Sophos AV URL for 'YourClientName'"
-    # }
-    # For now, assuming you might need a default or specific one - This needs clarification based on how you pick the client
-    # Placeholder: Using a default key if one exists, otherwise error
-    # This section needs refinement based on how you determine WHICH Sophos link to use.
-    # For the example, let's assume you need the 'Atlanta Family Law Immigration' link for testing
     $DefaultClientName = 'Atlanta Family Law Immigration' # CHANGE THIS AS NEEDED
     $SophosAV = Get-SophosClientURL -ClientName $DefaultClientName -SophosLinksData $sepLinks
     if ([string]::IsNullOrWhiteSpace($SophosAV)) {
         throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
     }
-    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV"
+    Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV" | Out-Null
 
-    Write-Host "`nSuccessfully loaded all required URLs"
+    Write-Host "`nSuccessfully loaded all required URLs" | Out-Null
 }
 catch {
     [System.Windows.Forms.MessageBox]::Show(
