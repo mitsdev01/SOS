@@ -46,7 +46,7 @@ $ProgressPreference = 'SilentlyContinue'
 # Function to decrypt and load installer links
 function Get-InstallerLinks {
     param (
-        [string]$EncryptedFile = "SEPLinks.enc"
+        [string]$EncryptedFile = "C:\temp\SEPLinks.enc"
     )
 
     try {
