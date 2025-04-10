@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.3b"
+$ScriptVersion = "1.7.3c"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -414,7 +414,7 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug:$true
+    $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" -ShowDebug:$false
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
     }
@@ -426,7 +426,7 @@ try {
     }
 
     # Debug: Output the URL being used
-    Write-Host "Using CheckModules URL: $CheckModules"
+    # Write-Host "Using CheckModules URL: $CheckModules"
 
     # Run the module check in the background
     $job = Start-Job -ScriptBlock {
@@ -444,7 +444,7 @@ try {
         throw "Failed to execute Check-Modules.ps1"
     }
 
-    Write-Host "Module check completed successfully"
+    # Write-Host "Module check completed successfully"
 }
 catch {
     Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
