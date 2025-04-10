@@ -174,8 +174,8 @@ function Decrypt-SoftwareURLs {
             $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
 
             if ($ShowDebug) {
-                Write-Host "`nDecrypted JSON from $FilePath :"
-                Write-Host $json
+                Write-Host "`nDecrypted JSON from $FilePath :" | Out-Null
+                Write-Host $json | Out-Null
             }
             
             # Convert JSON to PowerShell object
@@ -183,10 +183,10 @@ function Decrypt-SoftwareURLs {
 
             # Debug: Show object type and properties
             if ($ShowDebug) {
-                Write-Host "`nObject Type: $($result.GetType().FullName)"
-                Write-Host "Available Properties:"
+                Write-Host "`nObject Type: $($result.GetType().FullName)" | Out-Null
+                Write-Host "Available Properties:" | Out-Null
                 $result.PSObject.Properties | ForEach-Object {
-                    Write-Host "  $($_.Name) = $($_.Value)"
+                    Write-Host "  $($_.Name) = $($_.Value)" | Out-Null
                 }
             }
 
@@ -198,7 +198,7 @@ function Decrypt-SoftwareURLs {
         }
     }
     catch {
-        Write-Error "Failed to decrypt file $FilePath : $_"
+        Write-Error "Failed to decrypt file $FilePath : $_" | Out-Null
         [System.Windows.Forms.MessageBox]::Show(
             "Failed to load installer links from $FilePath.`n`nError: $_",
             "Decryption Error",
@@ -256,8 +256,8 @@ function Decrypt-SophosLinks {
             $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
 
             if ($ShowDebug) {
-                Write-Host "`nDecrypted JSON from $FilePath :"
-                Write-Host $json
+                Write-Host "`nDecrypted JSON from $FilePath :" | Out-Null
+                Write-Host $json | Out-Null
             }
 
             # Convert JSON to PowerShell object (should be an OrderedDictionary structure)
@@ -265,11 +265,11 @@ function Decrypt-SophosLinks {
 
             # Debug: Show object type and properties
             if ($ShowDebug) {
-                Write-Host "`nObject Type: $($result.GetType().FullName)"
-                Write-Host "Available Properties/Keys:"
+                Write-Host "`nObject Type: $($result.GetType().FullName)" | Out-Null
+                Write-Host "Available Properties/Keys:" | Out-Null
                 # Iterate PSCustomObject properties correctly
                 $result.PSObject.Properties | ForEach-Object {
-                    Write-Host "  $($_.Name) = $($_.Value)"
+                    Write-Host "  $($_.Name) = $($_.Value)" | Out-Null
                 }
             }
 
@@ -282,7 +282,7 @@ function Decrypt-SophosLinks {
         }
     }
     catch {
-        Write-Error "Failed to decrypt Sophos links file $FilePath : $_"
+        Write-Error "Failed to decrypt Sophos links file $FilePath : $_" | Out-Null
         [System.Windows.Forms.MessageBox]::Show(
             "Failed to load Sophos links from $FilePath.`n`nError: $_",
             "Decryption Error",
@@ -373,7 +373,7 @@ function Get-SophosClientURL {
     )
 
     if ($null -eq $SophosLinksData) {
-        Write-Error "Sophos Links data is null. Cannot retrieve URL for '$ClientName'."
+        Write-Error "Sophos Links data is null. Cannot retrieve URL for '$ClientName'." | Out-Null
         return $null
     }
 
@@ -381,7 +381,7 @@ function Get-SophosClientURL {
     # Use PSObject.Properties for robust checking on PSCustomObject
     $prop = $SophosLinksData.PSObject.Properties[$ClientName]
     if ($null -eq $prop) {
-        Write-Error "Client '$ClientName' not found as a property in decrypted Sophos Links data."
+        Write-Error "Client '$ClientName' not found as a property in decrypted Sophos Links data." | Out-Null
         return $null
     }
 
