@@ -53,19 +53,26 @@ function Get-InstallerLinks {
         # Read the encrypted bytes from the file
         $allBytes = [System.IO.File]::ReadAllBytes($EncryptedFile)
 
-        # Extract key, IV, and encrypted data
-        $key = $allBytes[0..31]
-        $iv = $allBytes[32..47]
-        $encryptedBytes = $allBytes[48..($allBytes.Length - 1)]
+        # Extract IV and encrypted data
+        $iv = $allBytes[0..15]
+        $encryptedBytes = $allBytes[16..($allBytes.Length - 1)]
 
-        # Create the AES decryption object
-        $aes = New-Object System.Security.Cryptography.AesManaged
+        # Create a fixed encryption key (32 bytes for AES-256)
+        $key = [byte[]]@(
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
+        )
+
+        # Create AES object
+        $aes = [System.Security.Cryptography.Aes]::Create()
         $aes.Key = $key
         $aes.IV = $iv
         $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
         $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
 
-        # Create the decryptor
+        # Create decryptor
         $decryptor = $aes.CreateDecryptor()
 
         # Decrypt the data
