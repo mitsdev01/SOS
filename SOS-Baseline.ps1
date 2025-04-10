@@ -401,7 +401,7 @@ try {
 
     # Now decrypt Sophos installer links
     #Write-Host "`nLoading Sophos installer links..."
-    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug # Call new function
+    $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug:$false # Call new function
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
     }
