@@ -226,11 +226,11 @@ function Decrypt-SophosLinks {
 
             # Debug: Show object type and properties
             if ($ShowDebug) {
-                Write-Host "`nObject Type: $($result.GetType().FullName)"
-                Write-Host "Available Properties/Keys:"
+                Write-Host "`nObject Type: $($result.GetType().FullName)" | Out-Null
+                Write-Host "Available Properties/Keys:" | Out-Null
                 # Iterate PSCustomObject properties correctly
                 $result.PSObject.Properties | ForEach-Object {
-                    Write-Host "  $($_.Name) = $($_.Value)"
+                    Write-Host "  $($_.Name) = $($_.Value)" | Out-Null
                 }
             }
 
