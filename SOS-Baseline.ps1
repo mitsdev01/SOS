@@ -350,7 +350,7 @@ function Get-SophosClientURL {
 
 try {
     # Decrypt software download URLs first
-    Write-Host "`nLoading software URLs..."
+    #Write-Host "`nLoading software URLs..."
     $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc" | Out-Null # Call renamed function
     if ($null -eq $softwareLinks) {
         throw "Failed to decrypt software URLs"
