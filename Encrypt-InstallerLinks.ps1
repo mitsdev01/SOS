@@ -1,8 +1,14 @@
 # Function to encrypt installer links
 function Encrypt-InstallerLinks {
     param (
-        [string]$OutputFile = "SEPLinks.enc"
+        [string]$OutputFile = "c:\temp\SEPLinks.enc"
     )
+
+    # Create output directory if it doesn't exist
+    $outputDir = Split-Path -Parent $OutputFile
+    if (-not (Test-Path $outputDir)) {
+        New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
+    }
 
     # Create the installer links dictionary
     $InstallerLinks = New-Object Collections.Specialized.OrderedDictionary
@@ -69,18 +75,47 @@ function Encrypt-InstallerLinks {
     # Convert the JSON to bytes
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 
-    # Encrypt the bytes using DPAPI
-    $encryptedBytes = [System.Security.Cryptography.ProtectedData]::Protect(
-        $bytes,
-        $null,
-        [System.Security.Cryptography.DataProtectionScope]::LocalMachine
+    # Create a fixed encryption key (32 bytes for AES-256)
+    $key = [byte[]]@(
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
     )
 
-    # Save the encrypted bytes to a file
-    [System.IO.File]::WriteAllBytes($OutputFile, $encryptedBytes)
+    # Create a fixed IV (16 bytes)
+    $iv = [byte[]]@(
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
+    )
 
-    Write-Host "Installer links have been encrypted and saved to $OutputFile"
+    # Create AES object
+    $aes = [System.Security.Cryptography.Aes]::Create()
+    $aes.Key = $key
+    $aes.IV = $iv
+    $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+    $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+
+    try {
+        # Create encryptor
+        $encryptor = $aes.CreateEncryptor()
+
+        # Encrypt the data
+        $encryptedBytes = $encryptor.TransformFinalBlock($bytes, 0, $bytes.Length)
+
+        # Combine IV and encrypted data
+        $result = $iv + $encryptedBytes
+
+        # Save to file
+        [System.IO.File]::WriteAllBytes($OutputFile, $result)
+
+        Write-Host "Sophos installer links have been encrypted and saved to $OutputFile" -ForegroundColor Green
+    }
+    finally {
+        if ($encryptor) { $encryptor.Dispose() }
+        if ($aes) { $aes.Dispose() }
+    }
 }
 
-# Export the function
-Export-ModuleMember -Function Encrypt-InstallerLinks 
+# Call the function to create the encrypted file
+Encrypt-InstallerLinks 

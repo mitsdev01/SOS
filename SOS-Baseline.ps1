@@ -50,6 +50,238 @@ $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
+
+# Function to decrypt files using AES
+function Decrypt-File {
+    param (
+        [string]$FilePath,
+        [switch]$ShowDebug
+    )
+    
+    try {
+        # Create a fixed encryption key (32 bytes for AES-256)
+        $key = [byte[]]@(
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
+        )
+
+        # Read the encrypted file
+        if (-not (Test-Path $FilePath)) {
+            throw "Encrypted file not found: $FilePath"
+        }
+
+        $encryptedData = [System.IO.File]::ReadAllBytes($FilePath)
+
+        # Extract IV (first 16 bytes)
+        $iv = $encryptedData[0..15]
+
+        # Extract encrypted data (remaining bytes)
+        $encryptedBytes = $encryptedData[16..($encryptedData.Length - 1)]
+
+        # Create AES object
+        $aes = [System.Security.Cryptography.Aes]::Create()
+        $aes.Key = $key
+        $aes.IV = $iv
+        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+
+        try {
+            # Create decryptor
+            $decryptor = $aes.CreateDecryptor()
+            
+            # Decrypt the data
+            $decryptedBytes = $decryptor.TransformFinalBlock($encryptedBytes, 0, $encryptedBytes.Length)
+            
+            # Convert bytes to string
+            $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
+
+            if ($ShowDebug) {
+                Write-Host "`nDecrypted JSON from $FilePath :"
+                Write-Host $json
+            }
+            
+            # Convert JSON to PowerShell object
+            $result = $json | ConvertFrom-Json
+
+            # Debug: Show object type and properties
+            if ($ShowDebug) {
+                Write-Host "`nObject Type: $($result.GetType().FullName)"
+                Write-Host "Available Properties:"
+                $result.PSObject.Properties | ForEach-Object {
+                    Write-Host "  $($_.Name) = $($_.Value)"
+                }
+            }
+
+            return $result
+        }
+        finally {
+            if ($decryptor) { $decryptor.Dispose() }
+            if ($aes) { $aes.Dispose() }
+        }
+    }
+    catch {
+        Write-Error "Failed to decrypt file $FilePath : $_"
+        [System.Windows.Forms.MessageBox]::Show(
+            "Failed to load installer links from $FilePath.`n`nError: $_",
+            "Decryption Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        )
+        return $null
+    }
+}
+
+# Function to safely get URL from decrypted data
+function Get-DecryptedURL {
+    param (
+        [Parameter(Mandatory=$true)]
+        [object]$Data,
+        [Parameter(Mandatory=$true)]
+        [string]$Key,
+        [string]$Description = "URL"
+    )
+
+    if ($null -eq $Data) {
+        throw "Decrypted data is null"
+    }
+
+    if (-not $Data.PSObject.Properties.Name.Contains($Key)) {
+        throw "Key '$Key' not found in decrypted data"
+    }
+
+    $value = $Data.$Key
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw "$Description is empty or null"
+    }
+
+    return $value
+}
+
+function Decrypt-InstallerLinks {
+    param (
+        [string]$InputFile = "c:\temp\SEPLinks.enc"
+    )
+
+    # Read the encrypted file
+    $encryptedData = [System.IO.File]::ReadAllBytes($InputFile)
+
+    # Extract IV (first 16 bytes)
+    $iv = $encryptedData[0..15]
+
+    # Extract encrypted data (remaining bytes)
+    $encryptedBytes = $encryptedData[16..($encryptedData.Length - 1)]
+
+    # Create a fixed encryption key (32 bytes for AES-256)
+    $key = [byte[]]@(
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
+    )
+
+    # Create AES object
+    $aes = [System.Security.Cryptography.Aes]::Create()
+    $aes.Key = $key
+    $aes.IV = $iv
+    $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+    $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+
+    # Create decryptor
+    $decryptor = $aes.CreateDecryptor()
+
+    # Decrypt the data
+    $decryptedBytes = $decryptor.TransformFinalBlock($encryptedBytes, 0, $encryptedBytes.Length)
+
+    # Convert bytes to string
+    $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
+
+    # Convert JSON to PowerShell object
+    $InstallerLinks = $json | ConvertFrom-Json
+
+    # Return the decrypted links
+    return $InstallerLinks
+}
+
+# Function to get client-specific Sophos URL
+function Get-SophosClientURL {
+    param (
+        [string]$ClientName,
+        [object]$SepLinks
+    )
+    
+    if ($null -eq $SepLinks -or $null -eq $SepLinks.Links -or -not $SepLinks.Links.ContainsKey($ClientName)) {
+        Write-Error "Client '$ClientName' not found in SEPLinks"
+        return $null
+    }
+    
+    return $SepLinks.Links[$ClientName]
+}
+
+try {
+    # Decrypt software download URLs first
+    Write-Host "`nLoading software URLs..."
+    $softwareLinks = Decrypt-File -FilePath "$TempFolder\urls.enc" -ShowDebug
+    if ($null -eq $softwareLinks) {
+        throw "Failed to decrypt software URLs"
+    }
+
+    # Assign URLs from decrypted data
+    Write-Host "`nAssigning URLs..."
+    $CheckModules = $softwareLinks.CheckModules
+    Write-Host "CheckModules = $CheckModules"
+    $OfficeURL = $softwareLinks.OfficeURL
+    Write-Host "OfficeURL = $OfficeURL"
+    $AdobeURL = $softwareLinks.AdobeURL
+    Write-Host "AdobeURL = $AdobeURL"
+    $Win11DebloatURL = $softwareLinks.Win11DebloatURL
+    Write-Host "Win11DebloatURL = $Win11DebloatURL"
+    $Win10DebloatURL = $softwareLinks.Win10DebloatURL
+    Write-Host "Win10DebloatURL = $Win10DebloatURL"
+    $SOSDebloatURL = $softwareLinks.SOSDebloatURL
+    Write-Host "SOSDebloatURL = $SOSDebloatURL"
+    $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
+    Write-Host "UpdateWindowsURL = $UpdateWindowsURL"
+    $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
+    Write-Host "BaselineCompleteURL = $BaselineCompleteURL"
+
+    # Verify all URLs are available
+    $requiredUrls = @{
+        'CheckModules' = $CheckModules
+        'OfficeURL' = $OfficeURL
+        'AdobeURL' = $AdobeURL
+        'Win11DebloatURL' = $Win11DebloatURL
+        'Win10DebloatURL' = $Win10DebloatURL
+        'SOSDebloatURL' = $SOSDebloatURL
+        'UpdateWindowsURL' = $UpdateWindowsURL
+        'BaselineCompleteURL' = $BaselineCompleteURL
+    }
+
+    $missingUrls = $requiredUrls.GetEnumerator() | Where-Object { [string]::IsNullOrEmpty($_.Value) } | Select-Object -ExpandProperty Key
+    if ($missingUrls) {
+        throw "The following URLs are missing or empty:`n$($missingUrls -join "`n")"
+    }
+
+    # Now decrypt Sophos installer links
+    Write-Host "`nLoading Sophos installer links..."
+    $sepLinks = Decrypt-File -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug
+    if ($null -eq $sepLinks) {
+        throw "Failed to decrypt Sophos installer links"
+    }
+
+    Write-Host "`nSuccessfully loaded all required URLs"
+}
+catch {
+    [System.Windows.Forms.MessageBox]::Show(
+        "Failed to process URLs.`n`nError: $_",
+        "URL Processing Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+    exit 1
+}
+
 # Store system type for use in termination handler
 $global:IsMobileDevice = $false
 
@@ -142,85 +374,6 @@ Add-Type -TypeDefinition @"
 "@
 
 # Function to decrypt installer links
-function Get-DecryptedURL {
-    param (
-        [string]$Key
-    )
-    
-    try {
-        # Check if file exists
-        if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
-            throw "Encrypted file not found at c:\temp\SEPLinks.enc"
-        }
-        
-        # Check if file has content
-        $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
-        if ($fileSize -eq 0) {
-            throw "Encrypted file is empty"
-        }
-        
-        # Read the encrypted file
-        $encryptedBytes = [System.IO.File]::ReadAllBytes("c:\temp\SEPLinks.enc")
-        
-        # Verify minimum file size for key, IV, and some data
-        if ($encryptedBytes.Length -lt 64) { # 32 bytes key + 16 bytes IV + at least 16 bytes data
-            throw "Encrypted file is too small to be valid"
-        }
-        
-        # Extract key, IV, and encrypted data
-        $keyBytes = $encryptedBytes[0..31]
-        $ivBytes = $encryptedBytes[32..47]
-        $encryptedData = $encryptedBytes[48..($encryptedBytes.Length - 1)]
-        
-        # Create AES decryptor
-        $aes = New-Object System.Security.Cryptography.AesManaged
-        $aes.Key = $keyBytes
-        $aes.IV = $ivBytes
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        
-        try {
-            # Create decryptor
-            $decryptor = $aes.CreateDecryptor()
-            
-            # Decrypt the data
-            $decryptedBytes = $decryptor.TransformFinalBlock($encryptedData, 0, $encryptedData.Length)
-            
-            # Convert to JSON
-            $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
-            
-            # Validate JSON
-            if (-not ($json -match '^{.*}$')) {
-                throw "Decrypted data is not valid JSON"
-            }
-            
-            # Convert to PowerShell object
-            $links = $json | ConvertFrom-Json
-            
-            # Check if key exists
-            if (-not $links.PSObject.Properties.Name.Contains($Key)) {
-                throw "Key '$Key' not found in decrypted data"
-            }
-            
-            # Return the requested URL
-            return $links.$Key
-        }
-        finally {
-            if ($decryptor) { $decryptor.Dispose() }
-            if ($aes) { $aes.Dispose() }
-        }
-    }
-    catch {
-        Write-Log "Error decrypting URL for key '$Key': $_"
-        [System.Windows.Forms.MessageBox]::Show(
-            "Failed to load installer links. Please ensure the encrypted file exists and is accessible.`n`nError: $_",
-            "Decryption Error",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Error
-        )
-        return $null
-    }
-}
 
 # Clear console window
 Clear-Host
@@ -532,25 +685,185 @@ function Show-Spinner {
     [Console]::Write($SpinnerChars[$SpinnerIndex % $SpinnerChars.Length])
 }
 
-function Start-CleanTranscript {
+# Function to decrypt and load installer links
+function Get-InstallerLinks {
     param (
-        [string]$Path
+        [string]$EncryptedFile = "c:\temp\SEPLinks.enc"
+    )
+
+    try {
+        # Read the encrypted bytes from the file
+        $allBytes = [System.IO.File]::ReadAllBytes($EncryptedFile)
+
+        # Extract IV and encrypted data
+        $iv = $allBytes[0..15]
+        $encryptedBytes = $allBytes[16..($allBytes.Length - 1)]
+
+        # Create a fixed encryption key (32 bytes for AES-256)
+        $key = [byte[]]@(
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
+        )
+
+        # Create AES object
+        $aes = [System.Security.Cryptography.Aes]::Create()
+        $aes.Key = $key
+        $aes.IV = $iv
+        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+
+        # Create decryptor
+        $decryptor = $aes.CreateDecryptor()
+
+        # Decrypt the data
+        $bytes = $decryptor.TransformFinalBlock($encryptedBytes, 0, $encryptedBytes.Length)
+
+        # Convert bytes to JSON string
+        $json = [System.Text.Encoding]::UTF8.GetString($bytes)
+
+        # Convert JSON to PSObject
+        $InstallerLinks = $json | ConvertFrom-Json
+
+        # Convert to OrderedDictionary to maintain order
+        $orderedDict = New-Object Collections.Specialized.OrderedDictionary
+        $InstallerLinks.PSObject.Properties | ForEach-Object {
+            $orderedDict.Add($_.Name, $_.Value)
+        }
+
+        return $orderedDict
+    }
+    catch {
+        Write-Error "Failed to load installer links: $_"
+        return $null
+    }
+}
+
+
+function Get-DecryptedURL {
+    param (
+        [string]$Key
     )
     
     try {
-        # Stop any existing transcript
-        try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
+        # Check if file exists
+        if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
+            throw "Encrypted file not found at c:\temp\SEPLinks.enc"
+        }
         
-        # Start new transcript
-        Start-Transcript -Path $Path -Force -ErrorAction Stop
+        # Check if file has content
+        $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
+        if ($fileSize -eq 0) {
+            throw "Encrypted file is empty"
+        }
         
-        # Don't write the header here anymore, it will be displayed in the Title Screen section
-        return $true
+        # Read the encrypted file
+        $encryptedBytes = [System.IO.File]::ReadAllBytes("c:\temp\SEPLinks.enc")
+        
+        # Verify minimum file size for key, IV, and some data
+        if ($encryptedBytes.Length -lt 64) { # 32 bytes key + 16 bytes IV + at least 16 bytes data
+            throw "Encrypted file is too small to be valid"
+        }
+        
+        # Extract key, IV, and encrypted data
+        $keyBytes = $encryptedBytes[0..31]
+        $ivBytes = $encryptedBytes[32..47]
+        $encryptedData = $encryptedBytes[48..($encryptedBytes.Length - 1)]
+        
+        # Create AES decryptor
+        $aes = New-Object System.Security.Cryptography.AesManaged
+        $aes.Key = $keyBytes
+        $aes.IV = $ivBytes
+        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+        
+        try {
+            # Create decryptor
+            $decryptor = $aes.CreateDecryptor()
+            
+            # Decrypt the data
+            $decryptedBytes = $decryptor.TransformFinalBlock($encryptedData, 0, $encryptedData.Length)
+            
+            # Convert to JSON
+            $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
+            
+            # Validate JSON
+            if (-not ($json -match '^{.*}$')) {
+                throw "Decrypted data is not valid JSON"
+            }
+            
+            # Convert to PowerShell object
+            $links = $json | ConvertFrom-Json
+            
+            # Check if key exists
+            if (-not $links.PSObject.Properties.Name.Contains($Key)) {
+                throw "Key '$Key' not found in decrypted data"
+            }
+            
+            # Return the requested URL
+            return $links.$Key
+        }
+        finally {
+            if ($decryptor) { $decryptor.Dispose() }
+            if ($aes) { $aes.Dispose() }
+        }
     }
     catch {
-        Write-Warning "Failed to start transcript: $_"
-        return $false
+        Write-Log "Error decrypting URL for key '$Key': $_"
+        [System.Windows.Forms.MessageBox]::Show(
+            "Failed to load installer links. Please ensure the encrypted file exists and is accessible.`n`nError: $_",
+            "Decryption Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        )
+        return $null
     }
+}
+
+function Decrypt-InstallerLinks {
+    param (
+        [string]$InputFile = "c:\temp\urls.enc"
+    )
+
+    # Read the encrypted file
+    $encryptedData = [System.IO.File]::ReadAllBytes($InputFile)
+
+    # Extract IV (first 16 bytes)
+    $iv = $encryptedData[0..15]
+
+    # Extract encrypted data (remaining bytes)
+    $encryptedBytes = $encryptedData[16..($encryptedData.Length - 1)]
+
+    # Create a fixed encryption key (32 bytes for AES-256)
+    $key = [byte[]]@(
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
+    )
+
+    # Create AES object
+    $aes = [System.Security.Cryptography.Aes]::Create()
+    $aes.Key = $key
+    $aes.IV = $iv
+    $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+    $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+
+    # Create decryptor
+    $decryptor = $aes.CreateDecryptor()
+
+    # Decrypt the data
+    $decryptedBytes = $decryptor.TransformFinalBlock($encryptedBytes, 0, $encryptedBytes.Length)
+
+    # Convert bytes to string
+    $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
+
+    # Convert JSON to PowerShell object
+    $InstallerLinks = $json | ConvertFrom-Json
+
+    # Return the decrypted links
+    return $InstallerLinks
 }
 
 function Start-VssService {
@@ -635,6 +948,7 @@ function Set-UsoSvcAutomatic {
 #region Logging
 # Start transcript logging  
 Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
+$links = Decrypt-InstallerLinks
 Clear-Host
 #endregion Logging
 
@@ -664,7 +978,7 @@ Start-Sleep -Seconds 2
 Write-Log "Automated workstation baseline has started"
 
 $ProgressPreference = "SilentlyContinue"
-Write-Delayed "Downloading installer links..." -NewLine:$false
+#Write-Delayed "Downloading installer links..." -NewLine:$false
 try {
     # Create temp directory if it doesn't exist
     if (-not (Test-Path "C:\temp")) {
@@ -672,8 +986,8 @@ try {
     }
     
     # Download the encrypted links file
-    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop
-    
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
     # Verify file exists and has content
     if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
         throw "Failed to download encrypted links file"
@@ -708,8 +1022,9 @@ $originalCursorTop = [Console]::CursorTop
 #  Run the module check in the background and show spinner
 try {
     $job = Start-Job -ScriptBlock {
-        Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Check-Modules.ps1")
-    }
+        param($moduleUrl)
+        Invoke-Expression (Invoke-RestMethod $moduleUrl)
+    } -ArgumentList $CheckModules
     
     # Display the spinner while the job is running
     while ($job.State -eq 'Running') {
@@ -1617,7 +1932,7 @@ if ($O365) {
 } else {
     $OfficePath = "c:\temp\OfficeSetup.exe"
     if (-not (Test-Path $OfficePath)) {
-        $OfficeURL = Get-DecryptedURL -Key "Office365"
+        $OfficeURL = Get-DecryptedURL -Key "OfficeURL"
         
         # Use spinner with progress bar for download
         Show-SpinnerWithProgressBar -Message "Downloading Microsoft Office 365..." -URL $OfficeURL -OutFile $OfficePath -DoneMessage " done."
@@ -1685,7 +2000,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 
     try {
         # Get the URL from encrypted file
-        $URL = Get-DecryptedURL -Key "AdobeAcrobat"
+        $URL = Get-DecryptedURL -Key "AcrobatURL"
         
         # Get the file size first
         $response = Invoke-WebRequest -Uri $URL -Method Head -ErrorAction Stop
@@ -1767,7 +2082,7 @@ if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
 #region Sophos Install
 # Run the Sophos installation script and wait for it to complete before continuing
 
-$sophosScript = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1" -UseBasicParsing).Content
+$sophosScript = (Invoke-WebRequest -Uri $SophosAV -UseBasicParsing).Content
 $sophosJob = Start-Job -ScriptBlock { 
     param($scriptContent)
     Invoke-Expression $scriptContent
@@ -1839,7 +2154,7 @@ Write-Delayed "Initiating cleaning up of Windows bloatware..." -NewLine:$false
 # Trigger SOS Debloat for Windows 11
 if (Is-Windows11) {
     try {
-        $Win11DebloatURL = Get-DecryptedURL -Key "Win11Debloat"
+        $Win11DebloatURL = Get-DecryptedURL -Key "Win11DebloatURL"
         $Win11DebloatFile = "c:\temp\SOS-Debloat.zip"
         Invoke-WebRequest -Uri $Win11DebloatURL -OutFile $Win11DebloatFile -UseBasicParsing -ErrorAction Stop 
         Start-Sleep -seconds 2
@@ -1863,7 +2178,7 @@ else {
 # Trigger SOS Debloat for Windows 10
 if (Is-Windows10) {
     try {
-        $SOSDebloatURL = Get-DecryptedURL -Key "Win10Debloat"
+        $SOSDebloatURL = Get-DecryptedURL -Key "Win10DebloatURL"
         $SOSDebloatFile = "c:\temp\SOS-Debloat.zip"
         Invoke-WebRequest -Uri $SOSDebloatURL -OutFile $SOSDebloatFile -UseBasicParsing -ErrorAction Stop 
         Start-Sleep -seconds 2
