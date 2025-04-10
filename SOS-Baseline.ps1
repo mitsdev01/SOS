@@ -524,13 +524,12 @@ Add-Type -TypeDefinition @"
     }
 "@
 
-#Read-Host -Prompt "Press Enter to continue"
 # Clear console window
 Clear-Host
 
 ############################################################################################################
 #                                                 Functions                                                #
-#                                                                                                           #
+#                                                                                                          #
 ############################################################################################################
 #region Functions
 function Print-Middle($Message, $Color = "White") {
@@ -835,7 +834,6 @@ function Show-Spinner {
     [Console]::Write($SpinnerChars[$SpinnerIndex % $SpinnerChars.Length])
 }
 
-# Function to decrypt and load installer links
 function Get-InstallerLinks {
     param (
         [string]$EncryptedFile = "c:\temp\SEPLinks.enc"
@@ -889,7 +887,6 @@ function Get-InstallerLinks {
         return $null
     }
 }
-
 
 function Get-DecryptedURL {
     param (
