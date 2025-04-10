@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.6.6                                           #
+#                                                 Version 1.6.7                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -16,13 +16,14 @@
     - Microsoft 365 and Adobe Acrobat installation
     - Removal of bloatware and unnecessary features
     - BitLocker encryption configuration
+    - Sophos Endpoint Security installation
     - System restore point creation
 
 .PARAMETER None
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.6.6
+    Version:        1.6.7
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -45,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.6.6"
+$ScriptVersion = "1.6.7"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -2267,6 +2268,72 @@ Write-Host ""
 
 
 ############################################################################################################
+#                                           System Restore Point                                           #
+#                                                                                                          #
+############################################################################################################
+#region System Restore
+# Create a restore point
+Start-VssService
+Remove-RestorePointFrequencyLimit
+Write-Delayed "Creating a system restore point..." -NewLine:$false
+
+# Initialize spinner
+$spinner = @('/', '-', '\', '|')
+$spinnerIndex = 0
+[Console]::Write($spinner[$spinnerIndex])
+
+# Set up the job to create the restore point
+$job = Start-Job -ScriptBlock { 
+    Checkpoint-Computer -Description "MITS New Workstation Baseline Completed - $(Get-Date -Format 'MM-dd-yyyy HH:mm:t')" -RestorePointType "MODIFY_SETTINGS" 
+}
+
+# Display spinner while job is running (max 90 seconds)
+$timeout = 90
+$startTime = Get-Date
+$success = $false
+
+while (($job.State -eq 'Running') -and (((Get-Date) - $startTime).TotalSeconds -lt $timeout)) {
+    Start-Sleep -Milliseconds 100
+    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    [Console]::Write($spinner[$spinnerIndex])
+}
+
+# Check if job completed or timed out
+if ($job.State -eq 'Running') {
+    # Job timed out
+    Stop-Job $job
+    $success = $false
+} else {
+    # Job completed, check result
+    $result = Receive-Job $job
+    $success = $true
+}
+
+# Remove the job
+Remove-Job $job -Force
+
+# Clear the spinner character
+[Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+
+# Display result
+if ($success) {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write(" created successfully.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    Write-Log "System restore point created successfully"
+} else {
+    [Console]::ForegroundColor = [System.ConsoleColor]::Red
+    [Console]::Write(" Failed to create restore point.")
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    Write-Log "Failed to create system restore point"
+}
+#endregion System Restore Point
+
+
+############################################################################################################
 #                                           Bloatware Cleanup                                              #
 #                                                                                                          #
 ############################################################################################################
@@ -2425,70 +2492,6 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
 
 #endregion DomainJoin
 
-############################################################################################################
-#                                           System Restore Point                                           #
-#                                                                                                          #
-############################################################################################################
-#region System Restore
-# Create a restore point
-Start-VssService
-Remove-RestorePointFrequencyLimit
-Write-Delayed "Creating a system restore point..." -NewLine:$false
-
-# Initialize spinner
-$spinner = @('/', '-', '\', '|')
-$spinnerIndex = 0
-[Console]::Write($spinner[$spinnerIndex])
-
-# Set up the job to create the restore point
-$job = Start-Job -ScriptBlock { 
-    Checkpoint-Computer -Description "MITS New Workstation Baseline Completed - $(Get-Date -Format 'MM-dd-yyyy HH:mm:t')" -RestorePointType "MODIFY_SETTINGS" 
-}
-
-# Display spinner while job is running (max 90 seconds)
-$timeout = 90
-$startTime = Get-Date
-$success = $false
-
-while (($job.State -eq 'Running') -and (((Get-Date) - $startTime).TotalSeconds -lt $timeout)) {
-    Start-Sleep -Milliseconds 100
-    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-    [Console]::Write($spinner[$spinnerIndex])
-}
-
-# Check if job completed or timed out
-if ($job.State -eq 'Running') {
-    # Job timed out
-    Stop-Job $job
-    $success = $false
-} else {
-    # Job completed, check result
-    $result = Receive-Job $job
-    $success = $true
-}
-
-# Remove the job
-Remove-Job $job -Force
-
-# Clear the spinner character
-[Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-
-# Display result
-if ($success) {
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write(" created successfully.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    Write-Log "System restore point created successfully"
-} else {
-    [Console]::ForegroundColor = [System.ConsoleColor]::Red
-    [Console]::Write(" Failed to create restore point.")
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    Write-Log "Failed to create system restore point"
-}
-#endregion System Restore Point
 
 ############################################################################################################
 #                                        Cleanup and Finalization                                        #
@@ -2757,7 +2760,9 @@ $TempFiles = @(
     "c:\temp\DRMM-Install.log",
     "C:\temp\AcroRdrDC2500120432_en_US.exe",
     "c:\temp\$env:COMPUTERNAME-baseline.txt",
-    "c:\temp\sos-rename-complete.flag"
+    "c:\temp\sos-rename-complete.flag",
+    "c:\temp\SEPLinks.enc",
+    "C:\temp\urls.enc"
 )
 
 Write-Delayed "Cleaning up temporary files..." -NewLine:$false
