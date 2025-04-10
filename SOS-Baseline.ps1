@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.6.9h"
+$ScriptVersion = "1.6.9g"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -135,8 +135,8 @@ function Decrypt-SoftwareURLs {
             $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
 
             if ($ShowDebug) {
-                #Write-Host "`nDecrypted JSON from $FilePath :"
-                #Write-Host $json
+                Write-Host "`nDecrypted JSON from $FilePath :"
+                Write-Host $json
             }
             
             # Convert JSON to PowerShell object
@@ -144,10 +144,10 @@ function Decrypt-SoftwareURLs {
 
             # Debug: Show object type and properties
             if ($ShowDebug) {
-                #Write-Host "`nObject Type: $($result.GetType().FullName)"
-                #Write-Host "Available Properties:"
+                Write-Host "`nObject Type: $($result.GetType().FullName)"
+                Write-Host "Available Properties:"
                 $result.PSObject.Properties | ForEach-Object {
-                #    Write-Host "  $($_.Name) = $($_.Value)"
+                    Write-Host "  $($_.Name) = $($_.Value)"
                 }
             }
 
