@@ -2603,7 +2603,41 @@ else {
         Write-Log "Error in computer rename process: $_"
     }
 }
+#endregion Rename Machine
 
+
+############################################################################################################
+#                                           Baseline Summary                                               #
+#                                                                                                          #
+############################################################################################################
+#region Summary
+# Display Baseline Summary
+Write-Host ""
+$Padding = ("=" * [System.Console]::BufferWidth)
+# Visual formatting
+Write-Host -ForegroundColor "Green" $Padding
+Print-Middle "SOS Baseline Script Completed Successfully" "Green"
+Print-Middle "Reboot recommended to finalize changes" "Yellow"
+Write-Host -ForegroundColor "Green" $Padding
+
+# Visual formatting
+Write-Host -ForegroundColor "Cyan" "Logs are available at:"
+Write-Host "  * $LogFile"
+Write-Host "  * $TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
+# $BaselineCompleteURL = Get-DecryptedURL -Key "BaselineComplete" # REMOVED - Use variable loaded earlier
+if ([string]::IsNullOrWhiteSpace($BaselineCompleteURL)) { throw "BaselineCompleteURL is not loaded." } # Added check
+Invoke-WebRequest -uri $BaselineCompleteURL -OutFile "c:\temp\BaselineComplete.ps1"
+$scriptPath = "c:\temp\BaselineComplete.ps1"
+Invoke-Expression "start powershell -ArgumentList '-noexit','-File $scriptPath'"
+Write-Host " "
+Write-Host " "
+#endregion Summary
+
+############################################################################################################
+#                                           Cleanup Temporary Files                                           #
+#                                                                                                          #
+############################################################################################################
+#region Cleanup Temporary Files
 
 # Define temp files to clean up
 $TempFiles = @(
@@ -2616,7 +2650,9 @@ $TempFiles = @(
     "c:\temp\$env:COMPUTERNAME-baseline.txt",
     "c:\temp\sos-rename-complete.flag",
     "c:\temp\SEPLinks.enc",
-    "C:\temp\urls.enc"
+    "C:\temp\urls.enc",
+    "C:\temp\Wakelock.ps1",
+    "C:\temp\wakelock.flag"
 )
 
 Write-Delayed "Cleaning up temporary files..." -NewLine:$false
@@ -2658,35 +2694,7 @@ if ($allSuccessful) {
 Write-Log "Temporary file cleanup completed successfully."
 #endregion Baseline Cleanup
 
-############################################################################################################
-#                                           Baseline Summary                                               #
-#                                                                                                          #
-############################################################################################################
-#region Summary
-# Display Baseline Summary
-Write-Host ""
-$Padding = ("=" * [System.Console]::BufferWidth)
-# Visual formatting
-Write-Host -ForegroundColor "Green" $Padding
-Print-Middle "SOS Baseline Script Completed Successfully" "Green"
-Print-Middle "Reboot recommended to finalize changes" "Yellow"
-Write-Host -ForegroundColor "Green" $Padding
 
-# Visual formatting
-Write-Host -ForegroundColor "Cyan" "Logs are available at:"
-Write-Host "  * $LogFile"
-Write-Host "  * $TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
-# $BaselineCompleteURL = Get-DecryptedURL -Key "BaselineComplete" # REMOVED - Use variable loaded earlier
-if ([string]::IsNullOrWhiteSpace($BaselineCompleteURL)) { throw "BaselineCompleteURL is not loaded." } # Added check
-Invoke-WebRequest -uri $BaselineCompleteURL -OutFile "c:\temp\BaselineComplete.ps1"
-$scriptPath = "c:\temp\BaselineComplete.ps1"
-Invoke-Expression "start powershell -ArgumentList '-noexit','-File $scriptPath'"
-Write-Host " "
-Write-Host " "
-#endregion Summary
-
-# Stopping transcript
-Stop-Transcript *> $null
 
 # Update log file with completion
 Write-Log "Automated workstation baseline has completed successfully"
@@ -2701,10 +2709,9 @@ $footerBorder
 "@
 Add-Content -Path $LogFile -Value $footer
 
-Read-Host -Prompt "Press enter to exit"
-Clear-HostFancily -Mode Falling -Speed 3.0
-Stop-Process -Id $PID -Force
+# Stopping transcript
+Stop-Transcript *> $null
 
-# Cleanup section
-Remove-item -path "C:\temp\SEPLinks.enc" -ErrorAction SilentlyContinue | Out-Null
-$ProgressPreference = "Continue"
+Read-Host -Prompt "Press enter to exit"
+Clear-HostFancily -Mode Falling -Speed 3.4
+Stop-Process -Id $PID -Force
