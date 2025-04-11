@@ -65,6 +65,404 @@ Add-Type -TypeDefinition @"
     }
 "@
 
+############################################################################################################
+#                                                 Functions                                                #
+#                                                                                                          #
+############################################################################################################
+#region Functions
+
+# Function to print a message in the middle of the console
+function Print-Middle($Message, $Color = "White") {
+    Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
+    Write-Host -ForegroundColor $Color $Message
+}
+
+# Function to write a message to the console with a delay
+function Write-Delayed {
+    param(
+        [string]$Text, 
+        [switch]$NewLine = $true,
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
+    )
+    
+    # Add to log file
+    Write-Log "$Text"
+    
+    # Write to transcript in one go (not character by character)
+    Write-Host $Text -NoNewline -ForegroundColor $Color
+    if ($NewLine) {
+        Write-Host ""
+    }
+    
+    # Clear the line where we just wrote to avoid duplication in console
+    $originalColor = [Console]::ForegroundColor
+    [Console]::ForegroundColor = $Color
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
+    [Console]::Write("".PadRight([Console]::BufferWidth - 1))  # Clear the line
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
+    
+    # Now do the visual character-by-character animation for the console only
+    foreach ($char in $Text.ToCharArray()) {
+        [Console]::Write($char)
+        Start-Sleep -Milliseconds 25
+    }
+    
+    # Add newline if requested
+    if ($NewLine) {
+        [Console]::WriteLine()
+    }
+    
+    # Restore original color
+    [Console]::ForegroundColor = $originalColor
+}
+
+# Function to write a message to the log file
+function Write-Log {
+    param ([string]$Message)
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Add-Content -Path $LogFile -Value "[$timestamp] $Message"
+}
+
+# Function to write a message to the console when a task is completed
+function Write-TaskComplete {
+    # Log to file
+    Write-Log "Task completed successfully"
+    
+    # Write to both transcript and console without creating a new line
+    Write-Host " done." -ForegroundColor Green -NoNewline
+    
+    # Add the newline after the "done." message
+    Write-Host ""
+}
+
+# Function to write a message to the console when a task fails
+function Write-TaskFailed {
+    # Log to file
+    Write-Log "Task failed"
+    
+    # Write to both transcript and console without creating a new line
+    Write-Host " failed." -ForegroundColor Red -NoNewline
+    
+    # Add the newline after the "failed." message
+    Write-Host ""
+}
+
+# Function to move a process window to the top right corner of the screen
+function Move-ProcessWindowToTopRight {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$processName
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $processes = Get-Process | Where-Object { $_.ProcessName -eq $processName }
+    
+    foreach ($process in $processes) {
+        $hwnd = $process.MainWindowHandle
+        if ($hwnd -eq [IntPtr]::Zero) { continue }
+        
+        $x = $screen.Right - 800
+        $y = $screen.Top
+        
+        [void][Win32.User32]::SetWindowPos($hwnd, -1, $x, $y, 800, 600, 0x0040)
+    }
+}
+
+# Function to check if the current OS is Windows 11
+function Is-Windows11 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 11
+    return $osVersion -ge "10.0.22000" -and $osProduct -like "*Windows 11*"
+}
+
+# Function to check if the current OS is Windows 10
+function Is-Windows10 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 10
+    return $osVersion -lt "10.0.22000" -and $osProduct -like "*Windows 10*"
+}
+
+# Function to test if the DattoRMM agent is installed
+function Test-DattoInstallation {
+    $service = Get-Service $agentName -ErrorAction SilentlyContinue
+    $serviceExists = $null -ne $service
+    $filesExist = Test-Path $agentPath
+    
+    return @{
+        ServiceExists = $serviceExists
+        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
+        FilesExist = $filesExist
+    }
+}
+
+# Function to show a spinning wait
+function Show-SpinningWait {
+    param (
+        [Parameter(Mandatory = $true)]
+        [ScriptBlock]$ScriptBlock,
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [string]$DoneMessage = "done.",
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [object[]]$ArgumentList,
+        [switch]$SuppressOutput = $false
+    )
+    
+    # Visual delayed writing (will also be included in transcript)
+    Write-Delayed "$Message" -NewLine:$false
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    $jobName = [Guid]::NewGuid().ToString()
+    
+    # Start the script block as a job
+    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
+    
+    # Display spinner while job is running
+    while ($job.State -eq 'Running') {
+        [Console]::Write($spinner[$spinnerIndex])
+        Start-Sleep -Milliseconds 100
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    }
+    
+    # Get the job result - Get job output first for transcript
+    $jobOutput = Receive-Job -Name $jobName
+    
+    # Log job output to transcript if there is any
+    if ($jobOutput -and -not $SuppressOutput) {
+        Write-Host "`nJob output: $($jobOutput -join "`n")" -ForegroundColor Gray
+    }
+    
+    Remove-Job -Name $jobName
+    
+    # Write done message once (will be captured in transcript)
+    # and handle visual formatting
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write($DoneMessage)
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
+    # Log completion to the log file
+    Write-Log "Completed: $Message"
+    
+    return $jobOutput
+}
+
+# Function to show a spinning wait with a progress bar
+function Show-SpinnerWithProgressBar {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $true)]
+        [string]$URL,
+        [Parameter(Mandatory = $true)]
+        [string]$OutFile,
+        [string]$DoneMessage = "done."
+    )
+    
+    # Visual delayed writing (will also be included in transcript)
+    Write-Delayed "$Message" -NewLine:$false
+    
+    # Create parent directory for output file if it doesn't exist
+    $outDir = Split-Path -Parent $OutFile
+    if (-not (Test-Path $outDir)) {
+        New-Item -Path $outDir -ItemType Directory -Force | Out-Null
+    }
+    
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    $done = $false
+    
+    # Start download in a separate runspace
+    $runspace = [runspacefactory]::CreateRunspace()
+    $runspace.Open()
+    $powerShell = [powershell]::Create()
+    $powerShell.Runspace = $runspace
+    
+    # Add script to download file
+    [void]$powerShell.AddScript({
+        param($URL, $OutFile)
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($URL, $OutFile)
+    }).AddArgument($URL).AddArgument($OutFile)
+    
+    # Start the download asynchronously
+    $handle = $powerShell.BeginInvoke()
+    
+    # Display spinner while downloading
+    try {
+        while (-not $handle.IsCompleted) {
+            # Write the current spinner character
+            [Console]::Write($spinner[$spinnerIndex])
+            Start-Sleep -Milliseconds 100
+            [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+            $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        }
+        
+        # Complete the async operation
+        $powerShell.EndInvoke($handle) | Out-String | Write-Debug
+    }
+    catch {
+        # Ensure errors are written to transcript
+        Write-Host "`nError during download: $_" -ForegroundColor Red
+    }
+    finally {
+        # Clean up resources
+        $powerShell.Dispose()
+        $runspace.Dispose()
+        
+        # Write done message once (will be captured in transcript)
+        # and handle visual formatting
+        [Console]::ForegroundColor = [System.ConsoleColor]::Green
+        [Console]::Write($DoneMessage)
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        # Ensure it's in the transcript too
+        #Write-Verbose "Finished: $Message $DoneMessage" -Verbose
+    }
+}
+
+# Function to show a spinning wait animation
+function Show-SpinnerAnimation {
+    param (
+        [ScriptBlock]$ScriptBlock,
+        [string]$Message,
+        [System.ConsoleColor]$SuccessColor = [System.ConsoleColor]::Green
+    )
+    
+    $spinChars = '/', '-', '\', '|'
+    $pos = 0
+    $originalCursorVisible = [Console]::CursorVisible
+    [Console]::CursorVisible = $false
+    
+    # Visual delayed writing (will also be included in transcript)
+    Write-Delayed $Message -NewLine:$false
+    
+    $job = Start-Job -ScriptBlock $ScriptBlock
+    
+    try {
+        while ($job.State -eq 'Running') {
+            [Console]::Write($spinChars[$pos])
+            Start-Sleep -Milliseconds 100
+            [Console]::Write("`b")
+            $pos = ($pos + 1) % 4
+        }
+        
+        # Get the job result
+        $result = Receive-Job -Job $job
+        
+        # Display completion status
+        [Console]::ForegroundColor = $SuccessColor
+        [Console]::Write(" done.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        return $result
+    }
+    finally {
+        Remove-Job -Job $job -Force
+        [Console]::CursorVisible = $originalCursorVisible
+    }
+}
+
+# Function to show a spinning wait animation
+function Show-Spinner {
+    param (
+        [int]$SpinnerIndex,
+        [string[]]$SpinnerChars = @('/', '-', '\', '|'),
+        [int]$CursorLeft,
+        [int]$CursorTop
+    )
+    
+    # Use only Console methods to avoid writing to transcript
+    [Console]::SetCursorPosition($CursorLeft, $CursorTop)
+    [Console]::Write($SpinnerChars[$SpinnerIndex % $SpinnerChars.Length])
+}
+
+# Function to start the Volume Shadow Copy service
+function Start-VssService {
+    $vss = Get-Service -Name 'VSS' -ErrorAction SilentlyContinue
+    if ($vss.Status -ne 'Running') {
+        Write-Delayed "Starting Volume Shadow Copy service for restore point creation..." -NewLine:$false
+        Start-Service VSS
+        Write-TaskComplete
+    }
+}
+
+# Function to remove the restore point frequency limit
+function Remove-RestorePointFrequencyLimit {
+    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
+    New-Item -Path $regPath -Force | Out-Null
+    Set-ItemProperty -Path $regPath -Name "SystemRestorePointCreationFrequency" -Value 0
+}
+
+# Function to create a restore point with a timeout
+function Create-RestorePoint-WithTimeout {
+    param (
+        [string]$Description,
+        [int]$TimeoutSeconds = 60
+    )
+
+    $job = Start-Job { Checkpoint-Computer -Description $using:Description -RestorePointType "MODIFY_SETTINGS" }
+    $completed = Wait-Job $job -Timeout $TimeoutSeconds
+
+    if (-not $completed) {
+        Write-Error "  [-] Restore point creation timed out after $TimeoutSeconds seconds. Stopping job..."
+        Stop-Job $job -Force
+        Remove-Job $job
+    } else {
+        Receive-Job $job
+        Write-Host "  [+] Restore point created successfully." -ForegroundColor Green
+        Remove-Job $job
+    }
+}
+
+# Function to start a clean transcript
+function Start-CleanTranscript {
+    param (
+        [string]$Path
+    )
+    
+    try {
+        # Stop any existing transcript
+        try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
+        
+        # Start new transcript
+        Start-Transcript -Path $Path -Force -ErrorAction Stop
+        
+        # Don't write the header here anymore, it will be displayed in the Title Screen section
+        return $true
+    }
+    catch {
+        Write-Warning "Failed to start transcript: $_"
+        return $false
+    }
+}
+
+# Function to set the UsoSvc service to automatic
+function Set-UsoSvcAutomatic {
+    try {
+        # Set service to Automatic
+        Set-Service -Name "UsoSvc" -StartupType Automatic
+        
+        # Start the service
+        Start-Service -Name "UsoSvc"
+        
+        # Verify the service status
+        $service = Get-Service -Name "UsoSvc"
+    }
+    catch {
+        Write-Error "Failed to configure UsoSvc: $($_.Exception.Message)"
+    }
+}
+
 # Function to decrypt files using AES
 function Decrypt-SoftwareURLs {
     param (
@@ -328,6 +726,8 @@ function Get-SophosClientURL {
     return $prop.Value
 }
 
+#endregion Functions
+
 # Downloading application links...
 try {
     # Create temp directory if it doesn't exist
@@ -419,9 +819,6 @@ try {
     if ([string]::IsNullOrWhiteSpace($SophosAV)) {
         throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
     }
-    #Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV"
-
-    #Write-Host "`nSuccessfully loaded all required URLs"
 }
 catch {
     [System.Windows.Forms.MessageBox]::Show(
@@ -517,387 +914,6 @@ Add-Content -Path $LogFile -Value $header
 
 # Clear console window
 Clear-Host
-
-############################################################################################################
-#                                                 Functions                                                #
-#                                                                                                          #
-############################################################################################################
-#region Functions
-function Print-Middle($Message, $Color = "White") {
-    Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
-    Write-Host -ForegroundColor $Color $Message
-}
-
-function Write-Delayed {
-    param(
-        [string]$Text, 
-        [switch]$NewLine = $true,
-        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
-    )
-    
-    # Add to log file
-    Write-Log "$Text"
-    
-    # Write to transcript in one go (not character by character)
-    Write-Host $Text -NoNewline -ForegroundColor $Color
-    if ($NewLine) {
-        Write-Host ""
-    }
-    
-    # Clear the line where we just wrote to avoid duplication in console
-    $originalColor = [Console]::ForegroundColor
-    [Console]::ForegroundColor = $Color
-    [Console]::SetCursorPosition(0, [Console]::CursorTop)
-    [Console]::Write("".PadRight([Console]::BufferWidth - 1))  # Clear the line
-    [Console]::SetCursorPosition(0, [Console]::CursorTop)
-    
-    # Now do the visual character-by-character animation for the console only
-    foreach ($char in $Text.ToCharArray()) {
-        [Console]::Write($char)
-        Start-Sleep -Milliseconds 25
-    }
-    
-    # Add newline if requested
-    if ($NewLine) {
-        [Console]::WriteLine()
-    }
-    
-    # Restore original color
-    [Console]::ForegroundColor = $originalColor
-}
-
-function Write-Log {
-    param ([string]$Message)
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -Path $LogFile -Value "[$timestamp] $Message"
-}
-
-function Write-TaskComplete {
-    # Log to file
-    Write-Log "Task completed successfully"
-    
-    # Write to both transcript and console without creating a new line
-    Write-Host " done." -ForegroundColor Green -NoNewline
-    
-    # Add the newline after the "done." message
-    Write-Host ""
-}
-
-function Write-TaskFailed {
-    # Log to file
-    Write-Log "Task failed"
-    
-    # Write to both transcript and console without creating a new line
-    Write-Host " failed." -ForegroundColor Red -NoNewline
-    
-    # Add the newline after the "failed." message
-    Write-Host ""
-}
-
-function Move-ProcessWindowToTopRight {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$processName
-    )
-    
-    Add-Type -AssemblyName System.Windows.Forms
-    
-    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-    $processes = Get-Process | Where-Object { $_.ProcessName -eq $processName }
-    
-    foreach ($process in $processes) {
-        $hwnd = $process.MainWindowHandle
-        if ($hwnd -eq [IntPtr]::Zero) { continue }
-        
-        $x = $screen.Right - 800
-        $y = $screen.Top
-        
-        [void][Win32.User32]::SetWindowPos($hwnd, -1, $x, $y, 800, 600, 0x0040)
-    }
-}
-
-function Is-Windows11 {
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    $osVersion = $osInfo.Version
-    $osProduct = $osInfo.Caption
-    # Check for Windows 11
-    return $osVersion -ge "10.0.22000" -and $osProduct -like "*Windows 11*"
-}
-
-function Is-Windows10 {
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    $osVersion = $osInfo.Version
-    $osProduct = $osInfo.Caption
-    # Check for Windows 10
-    return $osVersion -lt "10.0.22000" -and $osProduct -like "*Windows 10*"
-}
-
-function Test-DattoInstallation {
-    $service = Get-Service $agentName -ErrorAction SilentlyContinue
-    $serviceExists = $null -ne $service
-    $filesExist = Test-Path $agentPath
-    
-    return @{
-        ServiceExists = $serviceExists
-        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
-        FilesExist = $filesExist
-    }
-}
-
-function Show-SpinningWait {
-    param (
-        [Parameter(Mandatory = $true)]
-        [ScriptBlock]$ScriptBlock,
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [string]$DoneMessage = "done.",
-        [Parameter(ValueFromRemainingArguments = $true)]
-        [object[]]$ArgumentList,
-        [switch]$SuppressOutput = $false
-    )
-    
-    # Visual delayed writing (will also be included in transcript)
-    Write-Delayed "$Message" -NewLine:$false
-    $spinner = @('/', '-', '\', '|')
-    $spinnerIndex = 0
-    $jobName = [Guid]::NewGuid().ToString()
-    
-    # Start the script block as a job
-    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
-    
-    # Display spinner while job is running
-    while ($job.State -eq 'Running') {
-        [Console]::Write($spinner[$spinnerIndex])
-        Start-Sleep -Milliseconds 100
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-    }
-    
-    # Get the job result - Get job output first for transcript
-    $jobOutput = Receive-Job -Name $jobName
-    
-    # Log job output to transcript if there is any
-    if ($jobOutput -and -not $SuppressOutput) {
-        Write-Host "`nJob output: $($jobOutput -join "`n")" -ForegroundColor Gray
-    }
-    
-    Remove-Job -Name $jobName
-    
-    # Write done message once (will be captured in transcript)
-    # and handle visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write($DoneMessage)
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    
-    # Log completion to the log file
-    Write-Log "Completed: $Message"
-    
-    return $jobOutput
-}
-
-function Show-SpinnerWithProgressBar {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [Parameter(Mandatory = $true)]
-        [string]$URL,
-        [Parameter(Mandatory = $true)]
-        [string]$OutFile,
-        [string]$DoneMessage = "done."
-    )
-    
-    # Visual delayed writing (will also be included in transcript)
-    Write-Delayed "$Message" -NewLine:$false
-    
-    # Create parent directory for output file if it doesn't exist
-    $outDir = Split-Path -Parent $OutFile
-    if (-not (Test-Path $outDir)) {
-        New-Item -Path $outDir -ItemType Directory -Force | Out-Null
-    }
-    
-    $spinner = @('/', '-', '\', '|')
-    $spinnerIndex = 0
-    $done = $false
-    
-    # Start download in a separate runspace
-    $runspace = [runspacefactory]::CreateRunspace()
-    $runspace.Open()
-    $powerShell = [powershell]::Create()
-    $powerShell.Runspace = $runspace
-    
-    # Add script to download file
-    [void]$powerShell.AddScript({
-        param($URL, $OutFile)
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($URL, $OutFile)
-    }).AddArgument($URL).AddArgument($OutFile)
-    
-    # Start the download asynchronously
-    $handle = $powerShell.BeginInvoke()
-    
-    # Display spinner while downloading
-    try {
-        while (-not $handle.IsCompleted) {
-            # Write the current spinner character
-            [Console]::Write($spinner[$spinnerIndex])
-            Start-Sleep -Milliseconds 100
-            [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-            $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        }
-        
-        # Complete the async operation
-        $powerShell.EndInvoke($handle) | Out-String | Write-Debug
-    }
-    catch {
-        # Ensure errors are written to transcript
-        Write-Host "`nError during download: $_" -ForegroundColor Red
-    }
-    finally {
-        # Clean up resources
-        $powerShell.Dispose()
-        $runspace.Dispose()
-        
-        # Write done message once (will be captured in transcript)
-        # and handle visual formatting
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write($DoneMessage)
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        
-        # Ensure it's in the transcript too
-        #Write-Verbose "Finished: $Message $DoneMessage" -Verbose
-    }
-}
-
-function Show-SpinnerAnimation {
-    param (
-        [ScriptBlock]$ScriptBlock,
-        [string]$Message,
-        [System.ConsoleColor]$SuccessColor = [System.ConsoleColor]::Green
-    )
-    
-    $spinChars = '/', '-', '\', '|'
-    $pos = 0
-    $originalCursorVisible = [Console]::CursorVisible
-    [Console]::CursorVisible = $false
-    
-    # Visual delayed writing (will also be included in transcript)
-    Write-Delayed $Message -NewLine:$false
-    
-    $job = Start-Job -ScriptBlock $ScriptBlock
-    
-    try {
-        while ($job.State -eq 'Running') {
-            [Console]::Write($spinChars[$pos])
-            Start-Sleep -Milliseconds 100
-            [Console]::Write("`b")
-            $pos = ($pos + 1) % 4
-        }
-        
-        # Get the job result
-        $result = Receive-Job -Job $job
-        
-        # Display completion status
-        [Console]::ForegroundColor = $SuccessColor
-        [Console]::Write(" done.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        
-        return $result
-    }
-    finally {
-        Remove-Job -Job $job -Force
-        [Console]::CursorVisible = $originalCursorVisible
-    }
-}
-
-function Show-Spinner {
-    param (
-        [int]$SpinnerIndex,
-        [string[]]$SpinnerChars = @('/', '-', '\', '|'),
-        [int]$CursorLeft,
-        [int]$CursorTop
-    )
-    
-    # Use only Console methods to avoid writing to transcript
-    [Console]::SetCursorPosition($CursorLeft, $CursorTop)
-    [Console]::Write($SpinnerChars[$SpinnerIndex % $SpinnerChars.Length])
-}
-
-function Start-VssService {
-    $vss = Get-Service -Name 'VSS' -ErrorAction SilentlyContinue
-    if ($vss.Status -ne 'Running') {
-        Write-Delayed "Starting Volume Shadow Copy service for restore point creation..." -NewLine:$false
-        Start-Service VSS
-        Write-TaskComplete
-    }
-}
-
-function Remove-RestorePointFrequencyLimit {
-    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
-    New-Item -Path $regPath -Force | Out-Null
-    Set-ItemProperty -Path $regPath -Name "SystemRestorePointCreationFrequency" -Value 0
-}
-
-function Create-RestorePoint-WithTimeout {
-    param (
-        [string]$Description,
-        [int]$TimeoutSeconds = 60
-    )
-
-    $job = Start-Job { Checkpoint-Computer -Description $using:Description -RestorePointType "MODIFY_SETTINGS" }
-    $completed = Wait-Job $job -Timeout $TimeoutSeconds
-
-    if (-not $completed) {
-        Write-Error "  [-] Restore point creation timed out after $TimeoutSeconds seconds. Stopping job..."
-        Stop-Job $job -Force
-        Remove-Job $job
-    } else {
-        Receive-Job $job
-        Write-Host "  [+] Restore point created successfully." -ForegroundColor Green
-        Remove-Job $job
-    }
-}
-
-function Start-CleanTranscript {
-    param (
-        [string]$Path
-    )
-    
-    try {
-        # Stop any existing transcript
-        try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
-        
-        # Start new transcript
-        Start-Transcript -Path $Path -Force -ErrorAction Stop
-        
-        # Don't write the header here anymore, it will be displayed in the Title Screen section
-        return $true
-    }
-    catch {
-        Write-Warning "Failed to start transcript: $_"
-        return $false
-    }
-}
-
-function Set-UsoSvcAutomatic {
-    try {
-        # Set service to Automatic
-        Set-Service -Name "UsoSvc" -StartupType Automatic
-        
-        # Start the service
-        Start-Service -Name "UsoSvc"
-        
-        # Verify the service status
-        $service = Get-Service -Name "UsoSvc"
-    }
-    catch {
-        Write-Error "Failed to configure UsoSvc: $($_.Exception.Message)"
-    }
-}
-
-#endregion Functions
 
 
 ############################################################################################################
