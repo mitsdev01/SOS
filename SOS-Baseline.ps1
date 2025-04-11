@@ -728,7 +728,12 @@ function Get-SophosClientURL {
 
 #endregion Functions
 
-# Downloading application links...
+
+############################################################################################################
+#                                             Application Links                                            #
+#                                                                                                          #
+############################################################################################################
+#region Application Links
 try {
     # Create temp directory if it doesn't exist
     if (-not (Test-Path "C:\temp")) {
@@ -884,6 +889,7 @@ $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.Ps
     Write-Host "Cleanup completed. Exiting script." -ForegroundColor Yellow
 }
 
+#endregion Application Links
 
 ############################################################################################################
 #                                            Transcript Logging                                            #
@@ -1190,11 +1196,12 @@ if ($stopSuccess -and $disableSuccess -and $service.Status -eq 'Stopped') {
 }
 #endregion WindowsUpdate
 
+
 ############################################################################################################
 #                                        Power Profile Configuration                                       #
 #                                                                                                          #
 ############################################################################################################
-#region Power Profile
+#region Power Settings
 Write-Delayed "Configuring Power Profile for all devices..." -NewLine:$false
 Start-Sleep -Seconds 2
 
@@ -1244,9 +1251,8 @@ Write-Delayed "Activating power profile..." -NewLine:$false
 powercfg /S $activeScheme
 Write-TaskComplete
 Write-Log "Power profile configured to prevent sleep for all device types"
-#endregion PowerProfile
 
-#region SystemTime
+
 Write-Delayed "Setting EST as default timezone..." -NewLine:$false
 Start-Service W32Time
 Set-TimeZone -Id "Eastern Standard Time" 
@@ -1257,7 +1263,8 @@ Write-Delayed "Syncing system clock..." -NewLine:$false
 w32tm /resync -ErrorAction SilentlyContinue | Out-Null
 Write-TaskComplete
 Write-Log "Synced system clock"
-#endregion System Time
+
+#endregion Power Settings
 
 
 ############################################################################################################
@@ -1487,7 +1494,7 @@ Write-Log "Offline file sync disabled"
 
 
 ############################################################################################################
-#                                   Profile Customization and Privacy Settings                             #
+#                                            Profile and Privacy Settings                                  #
 #                                                                                                          #
 ############################################################################################################
 #region Profile Config
