@@ -1129,7 +1129,7 @@ $ProgressPreference = "SilentlyContinue"
 
 
 # Check for required modules
-Write-Delayed "`nPreparing required modules..." -NewLine:$false
+Write-Delayed "Preparing required modules..." -NewLine:$false
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
