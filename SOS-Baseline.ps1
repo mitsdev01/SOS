@@ -2171,13 +2171,13 @@ if (Is-Windows11) {
         # Display spinning character for 30 seconds
         $spinner = @('|', '/', '-', '\')
         $spinnerPos = 0
-        $endTime = (Get-Date).AddSeconds(30)
+        $endTime = (Get-Date).AddSeconds(35)
         $message = "Initiating cleaning up of Windows bloatware..."
         
         while ((Get-Date) -lt $endTime) {
             Write-Host "`r$message$($spinner[$spinnerPos])" -NoNewline
             $spinnerPos = ($spinnerPos + 1) % $spinner.Length
-            Start-Sleep -Milliseconds 200
+            Start-Sleep -Milliseconds 100
         }
         Write-Host "`r$message" -NoNewline 
         # Clear the spinner and show completion
