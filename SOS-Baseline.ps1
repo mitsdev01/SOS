@@ -2367,8 +2367,9 @@ if (Is-Windows11) {
             $spinnerPos = ($spinnerPos + 1) % $spinner.Length
             Start-Sleep -Milliseconds 200
         }
-        Write-Host "`r$message Done!     " # Clear the spinner and show completion
-        
+        Write-Host "`r$message" -NoNewline 
+        # Clear the spinner and show completion
+        Write-Host " done." -ForegroundColor Green # Clear the spinner and show completion
         Write-Log "Windows 11 Debloat completed successfully."
         Write-TaskComplete
     }
@@ -2405,7 +2406,8 @@ if (Is-Windows10) {
             $spinnerPos = ($spinnerPos + 1) % $spinner.Length
             Start-Sleep -Milliseconds 200
         }
-        Write-Host "`r$message Done!     " # Clear the spinner and show completion
+        Write-Host "`r$message" -NoNewline
+        Write-Host " done." -ForegroundColor Green # Clear the spinner and show completion
         
         Write-Log "Windows 10 Debloat completed successfully."
         Write-TaskComplete
