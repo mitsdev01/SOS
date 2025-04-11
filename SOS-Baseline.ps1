@@ -2363,7 +2363,7 @@ if (Is-Windows11) {
         $message = "Initiating cleaning up of Windows bloatware..."
         
         while ((Get-Date) -lt $endTime) {
-            Write-Host "`r$message $($spinner[$spinnerPos])" -NoNewline
+            Write-Host "`r$message$($spinner[$spinnerPos])" -NoNewline
             $spinnerPos = ($spinnerPos + 1) % $spinner.Length
             Start-Sleep -Milliseconds 200
         }
