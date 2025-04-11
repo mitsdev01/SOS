@@ -46,13 +46,24 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.0h"
+$ScriptVersion = "1.7.0i"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
-
+# Add the required Win32 API functions
+Add-Type -TypeDefinition @"
+    using System;
+    using System.Runtime.InteropServices;
+    
+    namespace Win32 {
+        public class User32 {
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        }
+    }
+"@
 
 # Function to decrypt files using AES
 function Decrypt-SoftwareURLs {
@@ -246,6 +257,7 @@ function Get-DecryptedURL {
     return $value
 }
 
+# Function to decrypt installer links
 function Decrypt-InstallerLinks {
     param (
         [string]$InputFile = "c:\temp\SEPLinks.enc"
@@ -316,8 +328,7 @@ function Get-SophosClientURL {
     return $prop.Value
 }
 
-
-#Write-Delayed "Downloading installer links..." -NewLine:$false
+# Downloading application links...
 try {
     # Create temp directory if it doesn't exist
     if (-not (Test-Path "C:\temp")) {
@@ -338,9 +349,6 @@ try {
     if ($fileSize -eq 0) {
         throw "Downloaded encrypted links file is empty"
     }
-    
-    #Write-TaskComplete
-    #Write-Log "Successfully downloaded installer links"
 }
 catch {
     Write-TaskFailed
@@ -353,9 +361,9 @@ catch {
     )
 }
 
-
+# Decrypt application links
 try {
-    # Decrypt software download URLs first
+    
     #Write-Host "`nLoading software URLs..."
     $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc"  -ShowDebug:$false
     if ($null -eq $softwareLinks) {
@@ -363,26 +371,15 @@ try {
     }
 
     # Assign URLs from decrypted data
-    #Write-Host "`nAssigning URLs..."
     $CheckModules = $softwareLinks.CheckModules
-    #Write-Host "CheckModules = $CheckModules"
-    # Assign DattoRMM URL
     $DattoRMM = $softwareLinks.DattoRMM
-    #Write-Host "DattoRMM = $DattoRMM"
     $OfficeURL = $softwareLinks.OfficeURL
-    #Write-Host "OfficeURL = $OfficeURL"
     $AdobeURL = $softwareLinks.AdobeURL
-    #Write-Host "AdobeURL = $AdobeURL"
     $Win11DebloatURL = $softwareLinks.Win11DebloatURL
-    #Write-Host "Win11DebloatURL = $Win11DebloatURL"
     $Win10DebloatURL = $softwareLinks.Win10DebloatURL
-    #Write-Host "Win10DebloatURL = $Win10DebloatURL"
     $SOSDebloatURL = $softwareLinks.SOSDebloatURL
-    #Write-Host "SOSDebloatURL = $SOSDebloatURL"
     $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
-    #Write-Host "UpdateWindowsURL = $UpdateWindowsURL"
     $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
-    #Write-Host "BaselineCompleteURL = $BaselineCompleteURL"
 
     # Verify all URLs are available
     $requiredUrls = @{
@@ -402,8 +399,7 @@ try {
         throw "The following URLs are missing or empty:`n$($missingUrls -join "`n")"
     }
 
-    # Now decrypt Sophos installer links
-    #Write-Host "`nLoading Sophos installer links..."
+    # Decrypt Sophos installer links
     $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug:$false # Call new function
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
@@ -491,9 +487,14 @@ $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.Ps
     Write-Host "Cleanup completed. Exiting script." -ForegroundColor Yellow
 }
 
+
 # Create required directories
 if (-not (Test-Path $TempFolder)) { New-Item -Path $TempFolder -ItemType Directory | Out-Null }
 if (-not (Test-Path $LogFile)) { New-Item -Path $LogFile -ItemType File | Out-Null }
+
+# Set working directory
+Set-Location -Path $TempFolder
+
 
 # Add log file header
 $headerBorder = "=" * 80
@@ -512,21 +513,7 @@ $headerBorder
 "@
 Add-Content -Path $LogFile -Value $header
 
-# Set working directory
-Set-Location -Path $TempFolder
 
-# Add the required Win32 API functions
-Add-Type -TypeDefinition @"
-    using System;
-    using System.Runtime.InteropServices;
-    
-    namespace Win32 {
-        public class User32 {
-            [DllImport("user32.dll", SetLastError = true)]
-            public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-        }
-    }
-"@
 
 # Clear console window
 Clear-Host
