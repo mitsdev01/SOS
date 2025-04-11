@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.0e"
+$ScriptVersion = "1.7.0f"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -2408,7 +2408,6 @@ if (Is-Windows10) {
         }
         Write-Host "`r$message" -NoNewline
         Write-Host " done." -ForegroundColor Green # Clear the spinner and show completion
-        
         Write-Log "Windows 10 Debloat completed successfully."
         #Write-TaskComplete
     }
