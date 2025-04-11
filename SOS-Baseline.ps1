@@ -52,41 +52,7 @@ $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
-#Write-Delayed "Downloading installer links..." -NewLine:$false
-try {
-    # Create temp directory if it doesn't exist
-    if (-not (Test-Path "C:\temp")) {
-        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
-    }
-    
-    # Download the encrypted links file
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
-    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
-    $ProgressPreference = 'Continue'
-    # Verify file exists and has content
-    if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
-        throw "Failed to download encrypted links file"
-    }
-    
-    $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
-    if ($fileSize -eq 0) {
-        throw "Downloaded encrypted links file is empty"
-    }
-    
-    #Write-TaskComplete
-    #Write-Log "Successfully downloaded installer links"
-}
-catch {
-    Write-TaskFailed
-    Write-Log "Failed to download installer links: $_"
-    [System.Windows.Forms.MessageBox]::Show(
-        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
-        "Download Error",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Error
-    )
-}
+
 
 # Function to decrypt files using AES
 function Decrypt-SoftwareURLs {
@@ -349,6 +315,44 @@ function Get-SophosClientURL {
     # Return the value of the property
     return $prop.Value
 }
+
+
+#Write-Delayed "Downloading installer links..." -NewLine:$false
+try {
+    # Create temp directory if it doesn't exist
+    if (-not (Test-Path "C:\temp")) {
+        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
+    }
+    
+    # Download the encrypted links file
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
+    $ProgressPreference = 'Continue'
+    # Verify file exists and has content
+    if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
+        throw "Failed to download encrypted links file"
+    }
+    
+    $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
+    if ($fileSize -eq 0) {
+        throw "Downloaded encrypted links file is empty"
+    }
+    
+    #Write-TaskComplete
+    #Write-Log "Successfully downloaded installer links"
+}
+catch {
+    Write-TaskFailed
+    Write-Log "Failed to download installer links: $_"
+    [System.Windows.Forms.MessageBox]::Show(
+        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
+        "Download Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+}
+
 
 try {
     # Decrypt software download URLs first
