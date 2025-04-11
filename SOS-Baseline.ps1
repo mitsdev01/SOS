@@ -885,13 +885,18 @@ $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.Ps
 }
 
 
+############################################################################################################
+#                                            Transcript Logging                                            #
+#                                                                                                          #
+############################################################################################################
+#region Logging
+
 # Create required directories
 if (-not (Test-Path $TempFolder)) { New-Item -Path $TempFolder -ItemType Directory | Out-Null }
 if (-not (Test-Path $LogFile)) { New-Item -Path $LogFile -ItemType File | Out-Null }
 
 # Set working directory
 Set-Location -Path $TempFolder
-
 
 # Add log file header
 $headerBorder = "=" * 80
@@ -908,24 +913,15 @@ Windows: $(Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandPro
 $headerBorder
 
 "@
+
 Add-Content -Path $LogFile -Value $header
 
-
-
-# Clear console window
-Clear-Host
-
-
-############################################################################################################
-#                                                Transcript Logging                                        #
-#                                                                                                          #
-############################################################################################################
-#region Logging
 # Start transcript logging  
 Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
 $links = Decrypt-SophosLinks
 
 Clear-Host
+
 #endregion Logging
 
 ############################################################################################################
