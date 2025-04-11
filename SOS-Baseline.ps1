@@ -2336,7 +2336,7 @@ if ($success) {
 ############################################################################################################
 #region Bloatware Cleanup
 
-Write-Delayed "Initiating cleaning up of Windows bloatware..." -NoNewline -NewLine:$false
+Write-Delayed "Initiating cleaning up of Windows bloatware... " -NoNewline -NewLine:$false
 
 # Use variables loaded earlier
 if ([string]::IsNullOrWhiteSpace($Win11DebloatURL)) { throw "Win11DebloatURL is not loaded." }
