@@ -2355,7 +2355,19 @@ if (Is-Windows11) {
         Start-Sleep -Seconds 2
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
-        Start-Sleep -Seconds 30
+        
+        # Display spinning character for 30 seconds
+        $spinner = @('|', '/', '-', '\')
+        $spinnerPos = 0
+        $endTime = (Get-Date).AddSeconds(30)
+        
+        while ((Get-Date) -lt $endTime) {
+            Write-Host "`r$($spinner[$spinnerPos])" -NoNewline
+            $spinnerPos = ($spinnerPos + 1) % $spinner.Length
+            Start-Sleep -Milliseconds 200
+        }
+        Write-Host "`r " -NoNewline  # Clear the spinner
+        
         Write-Log "Windows 11 Debloat completed successfully."
         Write-TaskComplete
     }
@@ -2380,7 +2392,19 @@ if (Is-Windows10) {
         Start-Sleep -Seconds 2
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.SendKeys]::SendWait('%{TAB}')
-        Start-Sleep -Seconds 30
+        
+        # Display spinning character for 30 seconds
+        $spinner = @('|', '/', '-', '\')
+        $spinnerPos = 0
+        $endTime = (Get-Date).AddSeconds(30)
+        
+        while ((Get-Date) -lt $endTime) {
+            Write-Host "`r$($spinner[$spinnerPos])" -NoNewline
+            $spinnerPos = ($spinnerPos + 1) % $spinner.Length
+            Start-Sleep -Milliseconds 200
+        }
+        Write-Host "`r " -NoNewline  # Clear the spinner
+        
         Write-Log "Windows 10 Debloat completed successfully."
         Write-TaskComplete
     }
