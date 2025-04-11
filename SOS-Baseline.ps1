@@ -2336,7 +2336,7 @@ if ($success) {
 ############################################################################################################
 #region Bloatware Cleanup
 
-Write-Delayed "Initiating cleaning up of Windows bloatware..." -NewLine:$false
+Write-Delayed "Initiating cleaning up of Windows bloatware..." -NoNewline -NewLine:$false
 
 # Use variables loaded earlier
 if ([string]::IsNullOrWhiteSpace($Win11DebloatURL)) { throw "Win11DebloatURL is not loaded." }
@@ -2360,13 +2360,14 @@ if (Is-Windows11) {
         $spinner = @('|', '/', '-', '\')
         $spinnerPos = 0
         $endTime = (Get-Date).AddSeconds(30)
+        $message = "Initiating cleaning up of Windows bloatware..."
         
         while ((Get-Date) -lt $endTime) {
-            Write-Host "`r$($spinner[$spinnerPos])" -NoNewline
+            Write-Host "`r$message $($spinner[$spinnerPos])" -NoNewline
             $spinnerPos = ($spinnerPos + 1) % $spinner.Length
             Start-Sleep -Milliseconds 200
         }
-        Write-Host "`r " -NoNewline  # Clear the spinner
+        Write-Host "`r$message Done!     " # Clear the spinner and show completion
         
         Write-Log "Windows 11 Debloat completed successfully."
         Write-TaskComplete
@@ -2397,13 +2398,14 @@ if (Is-Windows10) {
         $spinner = @('|', '/', '-', '\')
         $spinnerPos = 0
         $endTime = (Get-Date).AddSeconds(30)
+        $message = "Initiating cleaning up of Windows bloatware..."
         
         while ((Get-Date) -lt $endTime) {
-            Write-Host "`r$($spinner[$spinnerPos])" -NoNewline
+            Write-Host "`r$message $($spinner[$spinnerPos])" -NoNewline
             $spinnerPos = ($spinnerPos + 1) % $spinner.Length
             Start-Sleep -Milliseconds 200
         }
-        Write-Host "`r " -NoNewline  # Clear the spinner
+        Write-Host "`r$message Done!     " # Clear the spinner and show completion
         
         Write-Log "Windows 10 Debloat completed successfully."
         Write-TaskComplete
