@@ -2371,7 +2371,7 @@ if (Is-Windows11) {
         # Clear the spinner and show completion
         Write-Host " done." -ForegroundColor Green # Clear the spinner and show completion
         Write-Log "Windows 11 Debloat completed successfully."
-        Write-TaskComplete
+        #Write-TaskComplete
     }
     catch {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
@@ -2410,7 +2410,7 @@ if (Is-Windows10) {
         Write-Host " done." -ForegroundColor Green # Clear the spinner and show completion
         
         Write-Log "Windows 10 Debloat completed successfully."
-        Write-TaskComplete
+        #Write-TaskComplete
     }
     catch {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
