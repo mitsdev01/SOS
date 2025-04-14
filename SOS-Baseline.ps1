@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.7.1                                           #
+#                                                 Version 1.7.0                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -23,7 +23,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.7.1
+    Version:        1.7.0
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -46,7 +46,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.1"
+$ScriptVersion = "1.7.0o"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
@@ -744,7 +744,7 @@ if ($args -contains "-Command" -and $args -contains "Update-ScriptHash") {
         $allContent = Get-Content -Path $scriptPath -Raw
         
         # Create a temporary version without the hash line for hash calculation
-        $contentForHash = $allContent -split "`n" | Where-Object { $_ -notmatch 'validScriptHash = "1BA5671CC611F0F324784470D27C247EB134BDF8ACF546FDE48065E0F4AFC9EB"]*"' }
+        $contentForHash = $allContent -split "`n" | Where-Object { $_ -notmatch 'validScriptHash = "7474C37651421C74DE188601DCAEA44FE1F1E944E9779E0F40BB71B551EDAABE"]*"' }
         $contentForHash = $contentForHash -join "`r`n"
         
         # Calculate new hash
