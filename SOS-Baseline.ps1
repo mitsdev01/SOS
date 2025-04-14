@@ -728,6 +728,197 @@ function Get-SophosClientURL {
 
 #endregion Functions
 
+############################################################################################################
+#                                             Integrity Check                                              #
+#                                                                                                          #
+############################################################################################################
+#region Integrity Check
+# Command to Update Script Hash:  .\SOS-Baseline.ps1 -Command "Update-ScriptHash" -ScriptPath "c:\temp\SOS-Baseline.ps1"
+# Immediate execution block for hash updates
+if ($args -contains "-Command" -and $args -contains "Update-ScriptHash") {
+    $scriptPath = $args[$args.IndexOf("-ScriptPath") + 1]
+    Write-Host "Updating script hash..." -ForegroundColor Cyan
+    
+    try {
+        # Read the entire file content
+        $allContent = Get-Content -Path $scriptPath -Raw
+        
+        # Create a temporary version without the hash line for hash calculation
+        $contentForHash = $allContent -split "`n" | Where-Object { $_ -notmatch 'validScriptHash = "1BA5671CC611F0F324784470D27C247EB134BDF8ACF546FDE48065E0F4AFC9EB"]*"' }
+        $contentForHash = $contentForHash -join "`r`n"
+        
+        # Calculate new hash
+        $stream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($contentForHash))
+        $newHash = Get-FileHash -InputStream $stream -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+        $stream.Dispose()
+        
+        Write-Host "New hash calculated: $newHash" -ForegroundColor Yellow
+        
+        # Replace the hash in the content
+        $updatedContent = $allContent -replace 'validScriptHash = "7474C37651421C74DE188601DCAEA44FE1F1E944E9779E0F40BB71B551EDAABE"]*"', "validScriptHash = `"$newHash`""
+        
+        # Write the updated content back to the file
+        [System.IO.File]::WriteAllText($scriptPath, $updatedContent)
+        
+        Write-Host "Script hash updated successfully!" -ForegroundColor Green
+        exit 0
+    }
+    catch {
+        Write-Host "Error updating script hash: $_" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Parse command line parameters
+param(
+    [string]$Command,
+    [string]$ScriptPath
+)
+
+# Script integrity verification
+$validScriptHash = "7474C37651421C74DE188601DCAEA44FE1F1E944E9779E0F40BB71B551EDAABE" # This will be replaced with actual hash
+
+function Test-ScriptIntegrity {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ScriptPath
+    )
+
+    try {
+        # Get content excluding the hash line itself
+        $scriptContent = Get-Content -Path $ScriptPath | Where-Object { $_ -notmatch 'validScriptHash = "7474C37651421C74DE188601DCAEA44FE1F1E944E9779E0F40BB71B551EDAABE"]*"' }
+        $scriptContent = $scriptContent -join "`r`n"
+        
+        # Calculate current hash
+        $stream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($scriptContent))
+        $currentHash = Get-FileHash -InputStream $stream -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+        $stream.Dispose()
+
+        # Get the stored hash (excluding quotes)
+        $storedHash = $validScriptHash -replace '"', ''
+
+        if ($storedHash -eq "PLACEHOLDER_HASH") {
+            Write-Host "`r`nScript hash not initialized. Please run Update-ScriptHash to set the initial hash." -ForegroundColor Red
+            return $false
+        }
+
+        if ($currentHash -ne $storedHash) {
+            Write-Host "`r`nWARNING: Script integrity check failed!" -ForegroundColor Red
+            Write-Host "The script appears to have been modified from its original state." -ForegroundColor Red
+            Write-Host "Expected hash: $storedHash" -ForegroundColor Yellow
+            Write-Host "Current hash:  $currentHash" -ForegroundColor Yellow
+            Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
+            return $false
+        }
+        return $true
+    }
+    catch {
+        Write-Host "`r`nError during integrity check: $_" -ForegroundColor Red
+        return $false
+    }
+}
+
+# Only verify integrity if we're not updating the hash
+if ($Command -ne "Update-ScriptHash") {
+    if (-not (Test-ScriptIntegrity -ScriptPath $MyInvocation.MyCommand.Path)) {
+        exit 1
+    }
+}
+#endregion Integrity Check
+
+# Immediate execution block for hash updates
+if ($args -contains "-Command" -and $args -contains "Update-ScriptHash") {
+    $scriptPath = $args[$args.IndexOf("-ScriptPath") + 1]
+    Write-Host "Updating script hash..." -ForegroundColor Cyan
+    
+    try {
+        # Read the entire file content
+        $allContent = Get-Content -Path $scriptPath -Raw
+        
+        # Create a temporary version without the hash line for hash calculation
+        $contentForHash = $allContent -split "`n" | Where-Object { $_ -notmatch 'validScriptHash = "7474C37651421C74DE188601DCAEA44FE1F1E944E9779E0F40BB71B551EDAABE"]*"' }
+        $contentForHash = $contentForHash -join "`r`n"
+        
+        # Calculate new hash
+        $stream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($contentForHash))
+        $newHash = Get-FileHash -InputStream $stream -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+        $stream.Dispose()
+        
+        Write-Host "New hash calculated: $newHash" -ForegroundColor Yellow
+        
+        # Replace the hash in the content
+        $updatedContent = $allContent -replace 'validScriptHash = "7474C37651421C74DE188601DCAEA44FE1F1E944E9779E0F40BB71B551EDAABE"]*"', "validScriptHash = `"$newHash`""
+        
+        # Write the updated content back to the file
+        [System.IO.File]::WriteAllText($scriptPath, $updatedContent)
+        
+        Write-Host "Script hash updated successfully!" -ForegroundColor Green
+        exit 0
+    }
+    catch {
+        Write-Host "Error updating script hash: $_" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Parse command line parameters
+param(
+    [string]$Command,
+    [string]$ScriptPath
+)
+
+# Script integrity verification
+$validScriptHash = "7474C37651421C74DE188601DCAEA44FE1F1E944E9779E0F40BB71B551EDAABE" # This will be replaced with actual hash
+
+function Test-ScriptIntegrity {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ScriptPath
+    )
+
+    try {
+        # Get content excluding the hash line itself
+        $scriptContent = Get-Content -Path $ScriptPath | Where-Object { $_ -notmatch 'validScriptHash = "7474C37651421C74DE188601DCAEA44FE1F1E944E9779E0F40BB71B551EDAABE"]*"' }
+        $scriptContent = $scriptContent -join "`r`n"
+        
+        # Calculate current hash
+        $stream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($scriptContent))
+        $currentHash = Get-FileHash -InputStream $stream -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+        $stream.Dispose()
+
+        # Get the stored hash (excluding quotes)
+        $storedHash = $validScriptHash -replace '"', ''
+
+        if ($storedHash -eq "PLACEHOLDER_HASH") {
+            Write-Host "`r`nScript hash not initialized. Please run Update-ScriptHash to set the initial hash." -ForegroundColor Red
+            return $false
+        }
+
+        if ($currentHash -ne $storedHash) {
+            Write-Host "`r`nWARNING: Script integrity check failed!" -ForegroundColor Red
+            Write-Host "The script appears to have been modified from its original state." -ForegroundColor Red
+            Write-Host "Expected hash: $storedHash" -ForegroundColor Yellow
+            Write-Host "Current hash:  $currentHash" -ForegroundColor Yellow
+            Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
+            return $false
+        }
+        return $true
+    }
+    catch {
+        Write-Host "`r`nError during integrity check: $_" -ForegroundColor Red
+        return $false
+    }
+}
+
+# Only verify integrity if we're not updating the hash
+if ($Command -ne "Update-ScriptHash") {
+    if (-not (Test-ScriptIntegrity -ScriptPath $MyInvocation.MyCommand.Path)) {
+        exit 1
+    }
+}
+
 
 ############################################################################################################
 #                                             Application Links                                            #
