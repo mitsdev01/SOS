@@ -33,6 +33,7 @@
     .\SOS-Baseline.ps1
     
     Run the script with administrator privileges to execute the full baseline configuration.
+    Test
 
 .LINK
     https://github.com/mitsdev01/SOS
@@ -46,7 +47,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.1"
+$ScriptVersion = "1.7.1b"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
