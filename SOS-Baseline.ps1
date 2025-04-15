@@ -1,6 +1,6 @@
 ############################################################################################################
 #                                     SOS - New Workstation Baseline Script                                #
-#                                                 Version 1.7.0                                           #
+#                                                 Version 1.7.1                                           #
 ############################################################################################################
 #region Synopsis
 <#
@@ -23,7 +23,7 @@
     This script does not accept parameters.
 
 .NOTES
-    Version:        1.7.0
+    Version:        1.7.1
     Author:         Bill Ulrich
     Creation Date:  3/25/2025
     Requires:       Administrator privileges
@@ -33,6 +33,7 @@
     .\SOS-Baseline.ps1
     
     Run the script with administrator privileges to execute the full baseline configuration.
+    Test
 
 .LINK
     https://github.com/mitsdev01/SOS
@@ -46,46 +47,421 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Initial setup and version
-$ScriptVersion = "1.7.0"
+$ScriptVersion = "1.7.1b"
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 $TempFolder = "C:\temp"
 $LogFile = "$TempFolder\$env:COMPUTERNAME-baseline.log"
 
-#Write-Delayed "Downloading installer links..." -NewLine:$false
-try {
-    # Create temp directory if it doesn't exist
-    if (-not (Test-Path "C:\temp")) {
-        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
-    }
+# Add the required Win32 API functions
+Add-Type -TypeDefinition @"
+    using System;
+    using System.Runtime.InteropServices;
     
-    # Download the encrypted links file
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
-    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
-    $ProgressPreference = 'Continue'
-    # Verify file exists and has content
-    if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
-        throw "Failed to download encrypted links file"
+    namespace Win32 {
+        public class User32 {
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        }
     }
-    
-    $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
-    if ($fileSize -eq 0) {
-        throw "Downloaded encrypted links file is empty"
-    }
-    
-    #Write-TaskComplete
-    #Write-Log "Successfully downloaded installer links"
+"@
+
+############################################################################################################
+#                                                 Functions                                                #
+#                                                                                                          #
+############################################################################################################
+#region Functions
+
+# Function to print a message in the middle of the console
+function Print-Middle($Message, $Color = "White") {
+    Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
+    Write-Host -ForegroundColor $Color $Message
 }
-catch {
-    Write-TaskFailed
-    Write-Log "Failed to download installer links: $_"
-    [System.Windows.Forms.MessageBox]::Show(
-        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
-        "Download Error",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Error
+
+# Function to write a message to the console with a delay
+function Write-Delayed {
+    param(
+        [string]$Text, 
+        [switch]$NewLine = $true,
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
     )
+    
+    # Add to log file
+    Write-Log "$Text"
+    
+    # Write to transcript in one go (not character by character)
+    Write-Host $Text -NoNewline -ForegroundColor $Color
+    if ($NewLine) {
+        Write-Host ""
+    }
+    
+    # Clear the line where we just wrote to avoid duplication in console
+    $originalColor = [Console]::ForegroundColor
+    [Console]::ForegroundColor = $Color
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
+    [Console]::Write("".PadRight([Console]::BufferWidth - 1))  # Clear the line
+    [Console]::SetCursorPosition(0, [Console]::CursorTop)
+    
+    # Now do the visual character-by-character animation for the console only
+    foreach ($char in $Text.ToCharArray()) {
+        [Console]::Write($char)
+        Start-Sleep -Milliseconds 25
+    }
+    
+    # Add newline if requested
+    if ($NewLine) {
+        [Console]::WriteLine()
+    }
+    
+    # Restore original color
+    [Console]::ForegroundColor = $originalColor
+}
+
+# Function to write a message to the log file
+function Write-Log {
+    param ([string]$Message)
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Add-Content -Path $LogFile -Value "[$timestamp] $Message"
+}
+
+# Function to write a message to the console when a task is completed
+function Write-TaskComplete {
+    # Log to file
+    Write-Log "Task completed successfully"
+    
+    # Write to both transcript and console without creating a new line
+    Write-Host " done." -ForegroundColor Green -NoNewline
+    
+    # Add the newline after the "done." message
+    Write-Host ""
+}
+
+# Function to write a message to the console when a task fails
+function Write-TaskFailed {
+    # Log to file
+    Write-Log "Task failed"
+    
+    # Write to both transcript and console without creating a new line
+    Write-Host " failed." -ForegroundColor Red -NoNewline
+    
+    # Add the newline after the "failed." message
+    Write-Host ""
+}
+
+# Function to move a process window to the top right corner of the screen
+function Move-ProcessWindowToTopRight {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$processName
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $processes = Get-Process | Where-Object { $_.ProcessName -eq $processName }
+    
+    foreach ($process in $processes) {
+        $hwnd = $process.MainWindowHandle
+        if ($hwnd -eq [IntPtr]::Zero) { continue }
+        
+        $x = $screen.Right - 800
+        $y = $screen.Top
+        
+        [void][Win32.User32]::SetWindowPos($hwnd, -1, $x, $y, 800, 600, 0x0040)
+    }
+}
+
+# Function to check if the current OS is Windows 11
+function Is-Windows11 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 11
+    return $osVersion -ge "10.0.22000" -and $osProduct -like "*Windows 11*"
+}
+
+# Function to check if the current OS is Windows 10
+function Is-Windows10 {
+    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osProduct = $osInfo.Caption
+    # Check for Windows 10
+    return $osVersion -lt "10.0.22000" -and $osProduct -like "*Windows 10*"
+}
+
+# Function to test if the DattoRMM agent is installed
+function Test-DattoInstallation {
+    $service = Get-Service $agentName -ErrorAction SilentlyContinue
+    $serviceExists = $null -ne $service
+    $filesExist = Test-Path $agentPath
+    
+    return @{
+        ServiceExists = $serviceExists
+        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
+        FilesExist = $filesExist
+    }
+}
+
+# Function to show a spinning wait
+function Show-SpinningWait {
+    param (
+        [Parameter(Mandatory = $true)]
+        [ScriptBlock]$ScriptBlock,
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [string]$DoneMessage = "done.",
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [object[]]$ArgumentList,
+        [switch]$SuppressOutput = $false
+    )
+    
+    # Visual delayed writing (will also be included in transcript)
+    Write-Delayed "$Message" -NewLine:$false
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    $jobName = [Guid]::NewGuid().ToString()
+    
+    # Start the script block as a job
+    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
+    
+    # Display spinner while job is running
+    while ($job.State -eq 'Running') {
+        [Console]::Write($spinner[$spinnerIndex])
+        Start-Sleep -Milliseconds 100
+        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+    }
+    
+    # Get the job result - Get job output first for transcript
+    $jobOutput = Receive-Job -Name $jobName
+    
+    # Log job output to transcript if there is any
+    if ($jobOutput -and -not $SuppressOutput) {
+        Write-Host "`nJob output: $($jobOutput -join "`n")" -ForegroundColor Gray
+    }
+    
+    Remove-Job -Name $jobName
+    
+    # Write done message once (will be captured in transcript)
+    # and handle visual formatting
+    [Console]::ForegroundColor = [System.ConsoleColor]::Green
+    [Console]::Write($DoneMessage)
+    [Console]::ResetColor()
+    [Console]::WriteLine()
+    
+    # Log completion to the log file
+    Write-Log "Completed: $Message"
+    
+    return $jobOutput
+}
+
+# Function to show a spinning wait with a progress bar
+function Show-SpinnerWithProgressBar {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $true)]
+        [string]$URL,
+        [Parameter(Mandatory = $true)]
+        [string]$OutFile,
+        [string]$DoneMessage = "done."
+    )
+    
+    # Visual delayed writing (will also be included in transcript)
+    Write-Delayed "$Message" -NewLine:$false
+    
+    # Create parent directory for output file if it doesn't exist
+    $outDir = Split-Path -Parent $OutFile
+    if (-not (Test-Path $outDir)) {
+        New-Item -Path $outDir -ItemType Directory -Force | Out-Null
+    }
+    
+    $spinner = @('/', '-', '\', '|')
+    $spinnerIndex = 0
+    $done = $false
+    
+    # Start download in a separate runspace
+    $runspace = [runspacefactory]::CreateRunspace()
+    $runspace.Open()
+    $powerShell = [powershell]::Create()
+    $powerShell.Runspace = $runspace
+    
+    # Add script to download file
+    [void]$powerShell.AddScript({
+        param($URL, $OutFile)
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($URL, $OutFile)
+    }).AddArgument($URL).AddArgument($OutFile)
+    
+    # Start the download asynchronously
+    $handle = $powerShell.BeginInvoke()
+    
+    # Display spinner while downloading
+    try {
+        while (-not $handle.IsCompleted) {
+            # Write the current spinner character
+            [Console]::Write($spinner[$spinnerIndex])
+            Start-Sleep -Milliseconds 100
+            [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
+            $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
+        }
+        
+        # Complete the async operation
+        $powerShell.EndInvoke($handle) | Out-String | Write-Debug
+    }
+    catch {
+        # Ensure errors are written to transcript
+        Write-Host "`nError during download: $_" -ForegroundColor Red
+    }
+    finally {
+        # Clean up resources
+        $powerShell.Dispose()
+        $runspace.Dispose()
+        
+        # Write done message once (will be captured in transcript)
+        # and handle visual formatting
+        [Console]::ForegroundColor = [System.ConsoleColor]::Green
+        [Console]::Write($DoneMessage)
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        # Ensure it's in the transcript too
+        #Write-Verbose "Finished: $Message $DoneMessage" -Verbose
+    }
+}
+
+# Function to show a spinning wait animation
+function Show-SpinnerAnimation {
+    param (
+        [ScriptBlock]$ScriptBlock,
+        [string]$Message,
+        [System.ConsoleColor]$SuccessColor = [System.ConsoleColor]::Green
+    )
+    
+    $spinChars = '/', '-', '\', '|'
+    $pos = 0
+    $originalCursorVisible = [Console]::CursorVisible
+    [Console]::CursorVisible = $false
+    
+    # Visual delayed writing (will also be included in transcript)
+    Write-Delayed $Message -NewLine:$false
+    
+    $job = Start-Job -ScriptBlock $ScriptBlock
+    
+    try {
+        while ($job.State -eq 'Running') {
+            [Console]::Write($spinChars[$pos])
+            Start-Sleep -Milliseconds 100
+            [Console]::Write("`b")
+            $pos = ($pos + 1) % 4
+        }
+        
+        # Get the job result
+        $result = Receive-Job -Job $job
+        
+        # Display completion status
+        [Console]::ForegroundColor = $SuccessColor
+        [Console]::Write(" done.")
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+        
+        return $result
+    }
+    finally {
+        Remove-Job -Job $job -Force
+        [Console]::CursorVisible = $originalCursorVisible
+    }
+}
+
+# Function to show a spinning wait animation
+function Show-Spinner {
+    param (
+        [int]$SpinnerIndex,
+        [string[]]$SpinnerChars = @('/', '-', '\', '|'),
+        [int]$CursorLeft,
+        [int]$CursorTop
+    )
+    
+    # Use only Console methods to avoid writing to transcript
+    [Console]::SetCursorPosition($CursorLeft, $CursorTop)
+    [Console]::Write($SpinnerChars[$SpinnerIndex % $SpinnerChars.Length])
+}
+
+# Function to start the Volume Shadow Copy service
+function Start-VssService {
+    $vss = Get-Service -Name 'VSS' -ErrorAction SilentlyContinue
+    if ($vss.Status -ne 'Running') {
+        Write-Delayed "Starting Volume Shadow Copy service for restore point creation..." -NewLine:$false
+        Start-Service VSS
+        Write-TaskComplete
+    }
+}
+
+# Function to remove the restore point frequency limit
+function Remove-RestorePointFrequencyLimit {
+    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
+    New-Item -Path $regPath -Force | Out-Null
+    Set-ItemProperty -Path $regPath -Name "SystemRestorePointCreationFrequency" -Value 0
+}
+
+# Function to create a restore point with a timeout
+function Create-RestorePoint-WithTimeout {
+    param (
+        [string]$Description,
+        [int]$TimeoutSeconds = 60
+    )
+
+    $job = Start-Job { Checkpoint-Computer -Description $using:Description -RestorePointType "MODIFY_SETTINGS" }
+    $completed = Wait-Job $job -Timeout $TimeoutSeconds
+
+    if (-not $completed) {
+        Write-Error "  [-] Restore point creation timed out after $TimeoutSeconds seconds. Stopping job..."
+        Stop-Job $job -Force
+        Remove-Job $job
+    } else {
+        Receive-Job $job
+        Write-Host "  [+] Restore point created successfully." -ForegroundColor Green
+        Remove-Job $job
+    }
+}
+
+# Function to start a clean transcript
+function Start-CleanTranscript {
+    param (
+        [string]$Path
+    )
+    
+    try {
+        # Stop any existing transcript
+        try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
+        
+        # Start new transcript
+        Start-Transcript -Path $Path -Force -ErrorAction Stop
+        
+        # Don't write the header here anymore, it will be displayed in the Title Screen section
+        return $true
+    }
+    catch {
+        Write-Warning "Failed to start transcript: $_"
+        return $false
+    }
+}
+
+# Function to set the UsoSvc service to automatic
+function Set-UsoSvcAutomatic {
+    try {
+        # Set service to Automatic
+        Set-Service -Name "UsoSvc" -StartupType Automatic
+        
+        # Start the service
+        Start-Service -Name "UsoSvc"
+        
+        # Verify the service status
+        $service = Get-Service -Name "UsoSvc"
+    }
+    catch {
+        Write-Error "Failed to configure UsoSvc: $($_.Exception.Message)"
+    }
 }
 
 # Function to decrypt files using AES
@@ -280,6 +656,7 @@ function Get-DecryptedURL {
     return $value
 }
 
+# Function to decrypt installer links
 function Decrypt-InstallerLinks {
     param (
         [string]$InputFile = "c:\temp\SEPLinks.enc"
@@ -350,8 +727,261 @@ function Get-SophosClientURL {
     return $prop.Value
 }
 
+#endregion Functions
+
+############################################################################################################
+#                                             Integrity Check                                              #
+#                                                                                                          #
+############################################################################################################
+#region Integrity Check
+# Command to Update Script Hash: .\SOS-Baseline.ps1 -Command "Update-ScriptHash" -ScriptPath "c:\temp\SOS-Baseline.ps1"
+# Immediate execution block for hash updates
+if ($args -contains "-Command" -and $args -contains "Update-ScriptHash") {
+    $scriptPath = $args[$args.IndexOf("-ScriptPath") + 1]
+    Write-Host "Updating script hash..." -ForegroundColor Cyan
+    
+    try {
+        # Define a standardized hash calculation function
+        function Get-StandardizedFileHash {
+            param (
+                [Parameter(Mandatory = $true)]
+                [string]$FilePath,
+                [switch]$ExcludeHashLine
+            )
+            
+            # Read file with UTF8 encoding without BOM
+            $content = [System.IO.File]::ReadAllText($FilePath, [System.Text.Encoding]::UTF8)
+            
+            # If we need to exclude the hash line, do it with a consistent regex pattern
+            if ($ExcludeHashLine) {
+                $contentLines = $content -split "`n"
+                $contentLines = $contentLines | Where-Object { $_ -notmatch '\$validScriptHash\s*=\s*"[A-F0-9]+"' }
+                $content = $contentLines -join "`n"
+            }
+            
+            # Normalize all line endings to LF only
+            $content = $content.Replace("`r`n", "`n").Replace("`r", "`n")
+            
+            # Convert to byte array with UTF8 encoding
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($content)
+            
+            # Calculate hash
+            $sha256 = [System.Security.Cryptography.SHA256]::Create()
+            $hashBytes = $sha256.ComputeHash($bytes)
+            $sha256.Dispose()
+            
+            # Convert to uppercase hex string
+            $hashString = [BitConverter]::ToString($hashBytes).Replace("-", "")
+            return $hashString
+        }
+        
+        # Calculate hash using our standardized function
+        $newHash = Get-StandardizedFileHash -FilePath $scriptPath -ExcludeHashLine
+        
+        Write-Host "New hash calculated: $newHash" -ForegroundColor Yellow
+        
+        # Read the entire file content
+        $allContent = Get-Content -Path $scriptPath -Raw
+        
+        # Update hash in script file (for fallback/offline verification)
+        $updatedContent = $allContent -replace '\$validScriptHash\s*=\s*"[A-F0-9]+"', "`$validScriptHash = `"$newHash`""
+        [System.IO.File]::WriteAllText($scriptPath, $updatedContent, [System.Text.Encoding]::UTF8)
+        Write-Host "Local script hash updated successfully!" -ForegroundColor Green
+        
+        # Create a hash file for manual upload to Azure Blob Storage
+        $hashFilePath = "$PSScriptRoot\SOS-Baseline.hash"
+        Set-Content -Path $hashFilePath -Value $newHash -Force -NoNewline
+        
+        Write-Host "Hash file created at: $hashFilePath" -ForegroundColor Green
+        Write-Host "Please upload this file to https://axcientrestore.blob.core.windows.net/win11/ manually through the Azure portal." -ForegroundColor Cyan
+        
+        exit 0
+    }
+    catch {
+        Write-Host "Error updating script hash: $_" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Parse command line parameters
+param(
+    [string]$Command,
+    [string]$ScriptPath
+)
+
+# Script integrity verification - fallback local hash
+$validScriptHash = "76DE47E966AF115B6F6F69566BC1A9DF56F2954933DA10B48F40B39DACDAF931"
+
+# Define the standardized hash calculation function again for verification
+function Get-StandardizedFileHash {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [switch]$ExcludeHashLine
+    )
+    
+    # Read file with UTF8 encoding without BOM
+    $content = [System.IO.File]::ReadAllText($FilePath, [System.Text.Encoding]::UTF8)
+    
+    # If we need to exclude the hash line, do it with a consistent regex pattern
+    if ($ExcludeHashLine) {
+        $contentLines = $content -split "`n"
+        $contentLines = $contentLines | Where-Object { $_ -notmatch '\$validScriptHash\s*=\s*"[A-F0-9]+"' }
+        $content = $contentLines -join "`n"
+    }
+    
+    # Normalize all line endings to LF only
+    $content = $content.Replace("`r`n", "`n").Replace("`r", "`n")
+    
+    # Convert to byte array with UTF8 encoding
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($content)
+    
+    # Calculate hash
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $hashBytes = $sha256.ComputeHash($bytes)
+    $sha256.Dispose()
+    
+    # Convert to uppercase hex string
+    $hashString = [BitConverter]::ToString($hashBytes).Replace("-", "")
+    return $hashString
+}
+
+function Test-ScriptIntegrity {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ScriptPath,
+        [switch]$SkipRemoteCheck
+    )
+
+    try {
+        # First try to get the hash from Azure Blob Storage unless skipRemoteCheck is specified
+        $remoteHashValid = $false
+        $remoteHash = $null
+        
+        if (-not $SkipRemoteCheck) {
+            try {
+                # Download the hash file from Azure
+                $hashFileUrl = "https://axcientrestore.blob.core.windows.net/win11/SOS-Baseline.hash"
+                $tempHashFile = [System.IO.Path]::GetTempFileName()
+                
+                Write-Host "Checking integrity against remote hash..." -ForegroundColor Cyan
+                Invoke-WebRequest -Uri $hashFileUrl -OutFile $tempHashFile -UseBasicParsing -TimeoutSec 15
+                
+                if (Test-Path $tempHashFile) {
+                    # Read without adding a newline
+                    $remoteHash = [System.IO.File]::ReadAllText($tempHashFile).Trim()
+                    
+                    if (-not [string]::IsNullOrWhiteSpace($remoteHash)) {
+                        $remoteHashValid = $true
+                        Write-Host "Retrieved remote hash: $remoteHash" -ForegroundColor Gray
+                    }
+                    
+                    # Clean up temp file
+                    Remove-Item -Path $tempHashFile -Force
+                }
+            }
+            catch {
+                Write-Host "Could not retrieve remote hash, falling back to local validation: $_" -ForegroundColor Yellow
+                $remoteHashValid = $false
+            }
+        }
+        
+        # Use our standardized hash calculation
+        $currentHash = Get-StandardizedFileHash -FilePath $ScriptPath -ExcludeHashLine
+
+        # Get the stored local hash (excluding quotes) for fallback
+        $storedHash = $validScriptHash
+
+        # Debug output to help diagnose issues
+        Write-Host "Calculated current hash: $currentHash" -ForegroundColor Gray
+
+        # Check against remote hash first if available
+        if ($remoteHashValid) {
+            if ($currentHash -ne $remoteHash) {
+                Write-Host "`r`nWARNING: Script integrity check failed against remote hash!" -ForegroundColor Red
+                Write-Host "The script appears to have been modified from its original state." -ForegroundColor Red
+                Write-Host "Expected hash (remote): $remoteHash" -ForegroundColor Yellow
+                Write-Host "Current hash:           $currentHash" -ForegroundColor Yellow
+                Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
+                return $false
+            }
+            Write-Host "Script integrity verified against remote hash." -ForegroundColor Green
+            return $true
+        }
+        # Fallback to local hash check
+        else {
+            if ($storedHash -eq "PLACEHOLDER_HASH") {
+                Write-Host "`r`nScript hash not initialized. Please run Update-ScriptHash to set the initial hash." -ForegroundColor Red
+                return $false
+            }
+
+            if ($currentHash -ne $storedHash) {
+                Write-Host "`r`nWARNING: Script integrity check failed!" -ForegroundColor Red
+                Write-Host "The script appears to have been modified from its original state." -ForegroundColor Red
+                Write-Host "Expected hash (local): $storedHash" -ForegroundColor Yellow
+                Write-Host "Current hash:          $currentHash" -ForegroundColor Yellow
+                Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
+                return $false
+            }
+            Write-Host "Script integrity verified against local hash." -ForegroundColor Green
+            return $true
+        }
+    }
+    catch {
+        Write-Host "`r`nError during integrity check: $_" -ForegroundColor Red
+        return $false
+    }
+}
+
+# Only verify integrity if we're not updating the hash
+if ($Command -ne "Update-ScriptHash") {
+    if (-not (Test-ScriptIntegrity -ScriptPath $MyInvocation.MyCommand.Path)) {
+        exit 1
+    }
+}
+#endregion Integrity Check
+
+############################################################################################################
+#                                             Application Links                                            #
+#                                                                                                          #
+############################################################################################################
+#region Application Links
 try {
-    # Decrypt software download URLs first
+    # Create temp directory if it doesn't exist
+    if (-not (Test-Path "C:\temp")) {
+        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
+    }
+    
+    # Download the encrypted links file
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" -ErrorAction Stop | Out-Null
+    Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/urls.enc" -OutFile "c:\temp\urls.enc" -ErrorAction Stop | Out-Null
+    $ProgressPreference = 'Continue'
+    # Verify file exists and has content
+    if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
+        throw "Failed to download encrypted links file"
+    }
+    
+    $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
+    if ($fileSize -eq 0) {
+        throw "Downloaded encrypted links file is empty"
+    }
+}
+catch {
+    Write-TaskFailed
+    Write-Log "Failed to download installer links: $_"
+    [System.Windows.Forms.MessageBox]::Show(
+        "Failed to download installer links. The script may not function correctly.`n`nError: $_",
+        "Download Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+}
+
+# Decrypt application links
+try {
+    
     #Write-Host "`nLoading software URLs..."
     $softwareLinks = Decrypt-SoftwareURLs -FilePath "$TempFolder\urls.enc"  -ShowDebug:$false
     if ($null -eq $softwareLinks) {
@@ -359,26 +989,15 @@ try {
     }
 
     # Assign URLs from decrypted data
-    #Write-Host "`nAssigning URLs..."
     $CheckModules = $softwareLinks.CheckModules
-    #Write-Host "CheckModules = $CheckModules"
-    # Assign DattoRMM URL
     $DattoRMM = $softwareLinks.DattoRMM
-    #Write-Host "DattoRMM = $DattoRMM"
     $OfficeURL = $softwareLinks.OfficeURL
-    #Write-Host "OfficeURL = $OfficeURL"
     $AdobeURL = $softwareLinks.AdobeURL
-    #Write-Host "AdobeURL = $AdobeURL"
     $Win11DebloatURL = $softwareLinks.Win11DebloatURL
-    #Write-Host "Win11DebloatURL = $Win11DebloatURL"
     $Win10DebloatURL = $softwareLinks.Win10DebloatURL
-    #Write-Host "Win10DebloatURL = $Win10DebloatURL"
     $SOSDebloatURL = $softwareLinks.SOSDebloatURL
-    #Write-Host "SOSDebloatURL = $SOSDebloatURL"
     $UpdateWindowsURL = $softwareLinks.UpdateWindowsURL
-    #Write-Host "UpdateWindowsURL = $UpdateWindowsURL"
     $BaselineCompleteURL = $softwareLinks.BaselineCompleteURL
-    #Write-Host "BaselineCompleteURL = $BaselineCompleteURL"
 
     # Verify all URLs are available
     $requiredUrls = @{
@@ -398,8 +1017,7 @@ try {
         throw "The following URLs are missing or empty:`n$($missingUrls -join "`n")"
     }
 
-    # Now decrypt Sophos installer links
-    #Write-Host "`nLoading Sophos installer links..."
+    # Decrypt Sophos installer links
     $sepLinks = Decrypt-SophosLinks -FilePath "$TempFolder\SEPLinks.enc" -ShowDebug:$false # Call new function
     if ($null -eq $sepLinks) {
         throw "Failed to decrypt Sophos installer links"
@@ -419,9 +1037,6 @@ try {
     if ([string]::IsNullOrWhiteSpace($SophosAV)) {
         throw "Failed to retrieve the Sophos AV URL for '$DefaultClientName'. Check SEPLinks.enc and the client name."
     }
-    #Write-Host "Using Sophos AV URL for '$DefaultClientName': $SophosAV"
-
-    #Write-Host "`nSuccessfully loaded all required URLs"
 }
 catch {
     [System.Windows.Forms.MessageBox]::Show(
@@ -487,9 +1102,20 @@ $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.Ps
     Write-Host "Cleanup completed. Exiting script." -ForegroundColor Yellow
 }
 
+#endregion Application Links
+
+############################################################################################################
+#                                            Transcript Logging                                            #
+#                                                                                                          #
+############################################################################################################
+#region Logging
+
 # Create required directories
 if (-not (Test-Path $TempFolder)) { New-Item -Path $TempFolder -ItemType Directory | Out-Null }
 if (-not (Test-Path $LogFile)) { New-Item -Path $LogFile -ItemType File | Out-Null }
+
+# Set working directory
+Set-Location -Path $TempFolder
 
 # Add log file header
 $headerBorder = "=" * 80
@@ -506,601 +1132,15 @@ Windows: $(Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandPro
 $headerBorder
 
 "@
+
 Add-Content -Path $LogFile -Value $header
 
-# Set working directory
-Set-Location -Path $TempFolder
-
-# Add the required Win32 API functions
-Add-Type -TypeDefinition @"
-    using System;
-    using System.Runtime.InteropServices;
-    
-    namespace Win32 {
-        public class User32 {
-            [DllImport("user32.dll", SetLastError = true)]
-            public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-        }
-    }
-"@
-
-#Read-Host -Prompt "Press Enter to continue"
-# Clear console window
-Clear-Host
-
-############################################################################################################
-#                                                 Functions                                                #
-#                                                                                                           #
-############################################################################################################
-#region Functions
-function Print-Middle($Message, $Color = "White") {
-    Write-Host (" " * [System.Math]::Floor(([System.Console]::BufferWidth / 2) - ($Message.Length / 2))) -NoNewline
-    Write-Host -ForegroundColor $Color $Message
-}
-
-function Write-Delayed {
-    param(
-        [string]$Text, 
-        [switch]$NewLine = $true,
-        [System.ConsoleColor]$Color = [System.ConsoleColor]::White
-    )
-    
-    # Add to log file
-    Write-Log "$Text"
-    
-    # Write to transcript in one go (not character by character)
-    Write-Host $Text -NoNewline -ForegroundColor $Color
-    if ($NewLine) {
-        Write-Host ""
-    }
-    
-    # Clear the line where we just wrote to avoid duplication in console
-    $originalColor = [Console]::ForegroundColor
-    [Console]::ForegroundColor = $Color
-    [Console]::SetCursorPosition(0, [Console]::CursorTop)
-    [Console]::Write("".PadRight([Console]::BufferWidth - 1))  # Clear the line
-    [Console]::SetCursorPosition(0, [Console]::CursorTop)
-    
-    # Now do the visual character-by-character animation for the console only
-    foreach ($char in $Text.ToCharArray()) {
-        [Console]::Write($char)
-        Start-Sleep -Milliseconds 25
-    }
-    
-    # Add newline if requested
-    if ($NewLine) {
-        [Console]::WriteLine()
-    }
-    
-    # Restore original color
-    [Console]::ForegroundColor = $originalColor
-}
-
-function Write-Log {
-    param ([string]$Message)
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -Path $LogFile -Value "[$timestamp] $Message"
-}
-
-function Write-TaskComplete {
-    # Log to file
-    Write-Log "Task completed successfully"
-    
-    # Write to both transcript and console without creating a new line
-    Write-Host " done." -ForegroundColor Green -NoNewline
-    
-    # Add the newline after the "done." message
-    Write-Host ""
-}
-
-function Write-TaskFailed {
-    # Log to file
-    Write-Log "Task failed"
-    
-    # Write to both transcript and console without creating a new line
-    Write-Host " failed." -ForegroundColor Red -NoNewline
-    
-    # Add the newline after the "failed." message
-    Write-Host ""
-}
-
-function Move-ProcessWindowToTopRight {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$processName
-    )
-    
-    Add-Type -AssemblyName System.Windows.Forms
-    
-    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-    $processes = Get-Process | Where-Object { $_.ProcessName -eq $processName }
-    
-    foreach ($process in $processes) {
-        $hwnd = $process.MainWindowHandle
-        if ($hwnd -eq [IntPtr]::Zero) { continue }
-        
-        $x = $screen.Right - 800
-        $y = $screen.Top
-        
-        [void][Win32.User32]::SetWindowPos($hwnd, -1, $x, $y, 800, 600, 0x0040)
-    }
-}
-
-function Is-Windows11 {
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    $osVersion = $osInfo.Version
-    $osProduct = $osInfo.Caption
-    # Check for Windows 11
-    return $osVersion -ge "10.0.22000" -and $osProduct -like "*Windows 11*"
-}
-
-function Is-Windows10 {
-    $osInfo = Get-WmiObject -Class Win32_OperatingSystem
-    $osVersion = $osInfo.Version
-    $osProduct = $osInfo.Caption
-    # Check for Windows 10
-    return $osVersion -lt "10.0.22000" -and $osProduct -like "*Windows 10*"
-}
-
-function Test-DattoInstallation {
-    $service = Get-Service $agentName -ErrorAction SilentlyContinue
-    $serviceExists = $null -ne $service
-    $filesExist = Test-Path $agentPath
-    
-    return @{
-        ServiceExists = $serviceExists
-        ServiceRunning = if ($serviceExists) { $service.Status -eq 'Running' } else { $false }
-        FilesExist = $filesExist
-    }
-}
-
-function Show-SpinningWait {
-    param (
-        [Parameter(Mandatory = $true)]
-        [ScriptBlock]$ScriptBlock,
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [string]$DoneMessage = "done.",
-        [Parameter(ValueFromRemainingArguments = $true)]
-        [object[]]$ArgumentList,
-        [switch]$SuppressOutput = $false
-    )
-    
-    # Visual delayed writing (will also be included in transcript)
-    Write-Delayed "$Message" -NewLine:$false
-    $spinner = @('/', '-', '\', '|')
-    $spinnerIndex = 0
-    $jobName = [Guid]::NewGuid().ToString()
-    
-    # Start the script block as a job
-    $job = Start-Job -Name $jobName -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
-    
-    # Display spinner while job is running
-    while ($job.State -eq 'Running') {
-        [Console]::Write($spinner[$spinnerIndex])
-        Start-Sleep -Milliseconds 100
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-    }
-    
-    # Get the job result - Get job output first for transcript
-    $jobOutput = Receive-Job -Name $jobName
-    
-    # Log job output to transcript if there is any
-    if ($jobOutput -and -not $SuppressOutput) {
-        Write-Host "`nJob output: $($jobOutput -join "`n")" -ForegroundColor Gray
-    }
-    
-    Remove-Job -Name $jobName
-    
-    # Write done message once (will be captured in transcript)
-    # and handle visual formatting
-    [Console]::ForegroundColor = [System.ConsoleColor]::Green
-    [Console]::Write($DoneMessage)
-    [Console]::ResetColor()
-    [Console]::WriteLine()
-    
-    # Log completion to the log file
-    Write-Log "Completed: $Message"
-    
-    return $jobOutput
-}
-
-function Show-SpinnerWithProgressBar {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [Parameter(Mandatory = $true)]
-        [string]$URL,
-        [Parameter(Mandatory = $true)]
-        [string]$OutFile,
-        [string]$DoneMessage = "done."
-    )
-    
-    # Visual delayed writing (will also be included in transcript)
-    Write-Delayed "$Message" -NewLine:$false
-    
-    # Create parent directory for output file if it doesn't exist
-    $outDir = Split-Path -Parent $OutFile
-    if (-not (Test-Path $outDir)) {
-        New-Item -Path $outDir -ItemType Directory -Force | Out-Null
-    }
-    
-    $spinner = @('/', '-', '\', '|')
-    $spinnerIndex = 0
-    $done = $false
-    
-    # Start download in a separate runspace
-    $runspace = [runspacefactory]::CreateRunspace()
-    $runspace.Open()
-    $powerShell = [powershell]::Create()
-    $powerShell.Runspace = $runspace
-    
-    # Add script to download file
-    [void]$powerShell.AddScript({
-        param($URL, $OutFile)
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($URL, $OutFile)
-    }).AddArgument($URL).AddArgument($OutFile)
-    
-    # Start the download asynchronously
-    $handle = $powerShell.BeginInvoke()
-    
-    # Display spinner while downloading
-    try {
-        while (-not $handle.IsCompleted) {
-            # Write the current spinner character
-            [Console]::Write($spinner[$spinnerIndex])
-            Start-Sleep -Milliseconds 100
-            [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-            $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        }
-        
-        # Complete the async operation
-        $powerShell.EndInvoke($handle) | Out-String | Write-Debug
-    }
-    catch {
-        # Ensure errors are written to transcript
-        Write-Host "`nError during download: $_" -ForegroundColor Red
-    }
-    finally {
-        # Clean up resources
-        $powerShell.Dispose()
-        $runspace.Dispose()
-        
-        # Write done message once (will be captured in transcript)
-        # and handle visual formatting
-        [Console]::ForegroundColor = [System.ConsoleColor]::Green
-        [Console]::Write($DoneMessage)
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        
-        # Ensure it's in the transcript too
-        #Write-Verbose "Finished: $Message $DoneMessage" -Verbose
-    }
-}
-
-function Show-SpinnerAnimation {
-    param (
-        [ScriptBlock]$ScriptBlock,
-        [string]$Message,
-        [System.ConsoleColor]$SuccessColor = [System.ConsoleColor]::Green
-    )
-    
-    $spinChars = '/', '-', '\', '|'
-    $pos = 0
-    $originalCursorVisible = [Console]::CursorVisible
-    [Console]::CursorVisible = $false
-    
-    # Visual delayed writing (will also be included in transcript)
-    Write-Delayed $Message -NewLine:$false
-    
-    $job = Start-Job -ScriptBlock $ScriptBlock
-    
-    try {
-        while ($job.State -eq 'Running') {
-            [Console]::Write($spinChars[$pos])
-            Start-Sleep -Milliseconds 100
-            [Console]::Write("`b")
-            $pos = ($pos + 1) % 4
-        }
-        
-        # Get the job result
-        $result = Receive-Job -Job $job
-        
-        # Display completion status
-        [Console]::ForegroundColor = $SuccessColor
-        [Console]::Write(" done.")
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-        
-        return $result
-    }
-    finally {
-        Remove-Job -Job $job -Force
-        [Console]::CursorVisible = $originalCursorVisible
-    }
-}
-
-function Show-Spinner {
-    param (
-        [int]$SpinnerIndex,
-        [string[]]$SpinnerChars = @('/', '-', '\', '|'),
-        [int]$CursorLeft,
-        [int]$CursorTop
-    )
-    
-    # Use only Console methods to avoid writing to transcript
-    [Console]::SetCursorPosition($CursorLeft, $CursorTop)
-    [Console]::Write($SpinnerChars[$SpinnerIndex % $SpinnerChars.Length])
-}
-
-# Function to decrypt and load installer links
-function Get-InstallerLinks {
-    param (
-        [string]$EncryptedFile = "c:\temp\SEPLinks.enc"
-    )
-
-    try {
-        # Read the encrypted bytes from the file
-        $allBytes = [System.IO.File]::ReadAllBytes($EncryptedFile)
-
-        # Extract IV and encrypted data
-        $iv = $allBytes[0..15]
-        $encryptedBytes = $allBytes[16..($allBytes.Length - 1)]
-
-        # Create a fixed encryption key (32 bytes for AES-256)
-        $key = [byte[]]@(
-            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
-            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
-            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
-            0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
-        )
-
-        # Create AES object
-        $aes = [System.Security.Cryptography.Aes]::Create()
-        $aes.Key = $key
-        $aes.IV = $iv
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-
-        # Create decryptor
-        $decryptor = $aes.CreateDecryptor()
-
-        # Decrypt the data
-        $bytes = $decryptor.TransformFinalBlock($encryptedBytes, 0, $encryptedBytes.Length)
-
-        # Convert bytes to JSON string
-        $json = [System.Text.Encoding]::UTF8.GetString($bytes)
-
-        # Convert JSON to PSObject
-        $InstallerLinks = $json | ConvertFrom-Json
-
-        # Convert to OrderedDictionary to maintain order
-        $orderedDict = New-Object Collections.Specialized.OrderedDictionary
-        $InstallerLinks.PSObject.Properties | ForEach-Object {
-            $orderedDict.Add($_.Name, $_.Value)
-        }
-
-        return $orderedDict
-    }
-    catch {
-        Write-Error "Failed to load installer links: $_"
-        return $null
-    }
-}
-
-
-function Get-DecryptedURL {
-    param (
-        [string]$Key
-    )
-    
-    try {
-        # Check if file exists
-        if (-not (Test-Path "c:\temp\SEPLinks.enc")) {
-            throw "Encrypted file not found at c:\temp\SEPLinks.enc"
-        }
-        
-        # Check if file has content
-        $fileSize = (Get-Item "c:\temp\SEPLinks.enc").Length
-        if ($fileSize -eq 0) {
-            throw "Encrypted file is empty"
-        }
-        
-        # Read the encrypted file
-        $encryptedBytes = [System.IO.File]::ReadAllBytes("c:\temp\SEPLinks.enc")
-        
-        # Verify minimum file size for key, IV, and some data
-        if ($encryptedBytes.Length -lt 64) { # 32 bytes key + 16 bytes IV + at least 16 bytes data
-            throw "Encrypted file is too small to be valid"
-        }
-        
-        # Extract key, IV, and encrypted data
-        $keyBytes = $encryptedBytes[0..31]
-        $ivBytes = $encryptedBytes[32..47]
-        $encryptedData = $encryptedBytes[48..($encryptedBytes.Length - 1)]
-        
-        # Create AES decryptor
-        $aes = New-Object System.Security.Cryptography.AesManaged
-        $aes.Key = $keyBytes
-        $aes.IV = $ivBytes
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        
-        try {
-            # Create decryptor
-            $decryptor = $aes.CreateDecryptor()
-            
-            # Decrypt the data
-            $decryptedBytes = $decryptor.TransformFinalBlock($encryptedData, 0, $encryptedData.Length)
-            
-            # Convert to JSON
-            $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
-            
-            # Validate JSON
-            if (-not ($json -match '^{.*}$')) {
-                throw "Decrypted data is not valid JSON"
-            }
-            
-            # Convert to PowerShell object
-            $links = $json | ConvertFrom-Json
-            
-            # Check if key exists
-            if (-not $links.PSObject.Properties.Name.Contains($Key)) {
-                throw "Key '$Key' not found in decrypted data"
-            }
-            
-            # Return the requested URL
-            return $links.$Key
-        }
-        finally {
-            if ($decryptor) { $decryptor.Dispose() }
-            if ($aes) { $aes.Dispose() }
-        }
-    }
-    catch {
-        Write-Log "Error decrypting URL for key '$Key': $_"
-        [System.Windows.Forms.MessageBox]::Show(
-            "Failed to load installer links. Please ensure the encrypted file exists and is accessible.`n`nError: $_",
-            "Decryption Error",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Error
-        )
-        return $null
-    }
-}
-
-function Decrypt-SetupLinks {
-    param (
-        [string]$InputFile = "c:\temp\urls.enc"
-    )
-
-    # Read the encrypted file
-    $encryptedData = [System.IO.File]::ReadAllBytes($InputFile)
-
-    # Extract IV (first 16 bytes)
-    $iv = $encryptedData[0..15]
-
-    # Extract encrypted data (remaining bytes)
-    $encryptedBytes = $encryptedData[16..($encryptedData.Length - 1)]
-
-    # Create a fixed encryption key (32 bytes for AES-256)
-    $key = [byte[]]@(
-        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
-        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
-        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
-        0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF
-    )
-
-    # Create AES object
-    $aes = [System.Security.Cryptography.Aes]::Create()
-    $aes.Key = $key
-    $aes.IV = $iv
-    $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-    $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-
-    # Create decryptor
-    $decryptor = $aes.CreateDecryptor()
-
-    # Decrypt the data
-    $decryptedBytes = $decryptor.TransformFinalBlock($encryptedBytes, 0, $encryptedBytes.Length)
-
-    # Convert bytes to string
-    $json = [System.Text.Encoding]::UTF8.GetString($decryptedBytes)
-
-    # Convert JSON to PowerShell object
-    $InstallerLinks = $json | ConvertFrom-Json
-
-    # Return the decrypted links
-    return $InstallerLinks
-}
-
-function Start-VssService {
-    $vss = Get-Service -Name 'VSS' -ErrorAction SilentlyContinue
-    if ($vss.Status -ne 'Running') {
-        Write-Delayed "Starting Volume Shadow Copy service for restore point creation..." -NewLine:$false
-        Start-Service VSS
-        Write-TaskComplete
-    }
-}
-
-function Remove-RestorePointFrequencyLimit {
-    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
-    New-Item -Path $regPath -Force | Out-Null
-    Set-ItemProperty -Path $regPath -Name "SystemRestorePointCreationFrequency" -Value 0
-}
-
-function Create-RestorePoint-WithTimeout {
-    param (
-        [string]$Description,
-        [int]$TimeoutSeconds = 60
-    )
-
-    $job = Start-Job { Checkpoint-Computer -Description $using:Description -RestorePointType "MODIFY_SETTINGS" }
-    $completed = Wait-Job $job -Timeout $TimeoutSeconds
-
-    if (-not $completed) {
-        Write-Error "  [-] Restore point creation timed out after $TimeoutSeconds seconds. Stopping job..."
-        Stop-Job $job -Force
-        Remove-Job $job
-    } else {
-        Receive-Job $job
-        Write-Host "  [+] Restore point created successfully." -ForegroundColor Green
-        Remove-Job $job
-    }
-}
-
-function Start-CleanTranscript {
-    param (
-        [string]$Path
-    )
-    
-    try {
-        # Stop any existing transcript
-        try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
-        
-        # Start new transcript
-        Start-Transcript -Path $Path -Force -ErrorAction Stop
-        
-        # Don't write the header here anymore, it will be displayed in the Title Screen section
-        return $true
-    }
-    catch {
-        Write-Warning "Failed to start transcript: $_"
-        return $false
-    }
-}
-
-function Set-UsoSvcAutomatic {
-    try {
-        # Set service to Automatic
-        Set-Service -Name "UsoSvc" -StartupType Automatic
-        
-        # Start the service
-        Start-Service -Name "UsoSvc"
-        
-        # Verify the service status
-        $service = Get-Service -Name "UsoSvc"
-    }
-    catch {
-        Write-Error "Failed to configure UsoSvc: $($_.Exception.Message)"
-    }
-}
-
-#endregion Functions
-
-
-############################################################################################################
-#                                                Transcript Logging                                        #
-#                                                                                                          #
-############################################################################################################
-#region Logging
 # Start transcript logging  
 Start-CleanTranscript -Path "$TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
 $links = Decrypt-SophosLinks
 
 Clear-Host
+
 #endregion Logging
 
 ############################################################################################################
@@ -1132,7 +1172,7 @@ $ProgressPreference = "SilentlyContinue"
 
 
 # Check for required modules
-Write-Delayed "`nPreparing required modules..." -NewLine:$false
+Write-Delayed "Preparing required modules..." -NewLine:$false
 $spinner = @('/', '-', '\', '|')
 $spinnerIndex = 0
 $originalCursorLeft = [Console]::CursorLeft
@@ -1369,11 +1409,12 @@ if ($stopSuccess -and $disableSuccess -and $service.Status -eq 'Stopped') {
 }
 #endregion WindowsUpdate
 
+
 ############################################################################################################
 #                                        Power Profile Configuration                                       #
 #                                                                                                          #
 ############################################################################################################
-#region Power Profile
+#region Power Settings
 Write-Delayed "Configuring Power Profile for all devices..." -NewLine:$false
 Start-Sleep -Seconds 2
 
@@ -1423,9 +1464,8 @@ Write-Delayed "Activating power profile..." -NewLine:$false
 powercfg /S $activeScheme
 Write-TaskComplete
 Write-Log "Power profile configured to prevent sleep for all device types"
-#endregion PowerProfile
 
-#region SystemTime
+
 Write-Delayed "Setting EST as default timezone..." -NewLine:$false
 Start-Service W32Time
 Set-TimeZone -Id "Eastern Standard Time" 
@@ -1436,781 +1476,6 @@ Write-Delayed "Syncing system clock..." -NewLine:$false
 w32tm /resync -ErrorAction SilentlyContinue | Out-Null
 Write-TaskComplete
 Write-Log "Synced system clock"
-#endregion System Time
-
-
-############################################################################################################
-#                                        Bitlocker Configuration                                           #
-#                                                                                                          #
-############################################################################################################
-#region Bitlocker
-# Check Bitlocker Compatibility -v2
-$WindowsVer = Get-WmiObject -Query 'select * from Win32_OperatingSystem where (Version like "6.2%" or Version like "6.3%" or Version like "10.0%") and ProductType = "1"' -ErrorAction SilentlyContinue
-$TPM = Get-WmiObject -Namespace root\cimv2\security\microsofttpm -Class Win32_Tpm -ErrorAction SilentlyContinue
-$BitLockerReadyDrive = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction SilentlyContinue
-
-if ($WindowsVer -and $TPM -and $BitLockerReadyDrive) {
-    # Check if Bitlocker is already configured on C:
-    $BitLockerStatus = Get-BitLockerVolume -MountPoint $env:SystemDrive
-    # Ensure the output directory exists
-    $outputDirectory = "C:\temp"
-    if (-not (Test-Path -Path $outputDirectory)) {
-        New-Item -Path $outputDirectory -ItemType Directory | Out-Null
-    }
-    if ($BitLockerStatus.ProtectionStatus -eq 'On') {
-        # Bitlocker is already configured
-        # Write to transcript
-        Write-Host "Bitlocker is already configured on $env:SystemDrive - " -ForegroundColor Red -NoNewline
-        
-        # Setup for non-blocking read with timeout
-        $timeoutSeconds = 10
-        $endTime = (Get-Date).AddSeconds($timeoutSeconds)
-        $userResponse = $null
-
-        # Write prompt to transcript
-        #Write-Host "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
-        
-        # For visual appearance
-        Write-Host -ForegroundColor Red "Do you want to skip configuring Bitlocker? (yes/no)" -NoNewline
-
-        while ($true) {
-            if ([Console]::KeyAvailable) {
-                $key = [Console]::ReadKey($true)
-                if ($key.KeyChar -match '^[ynYN]$') {
-                    $userResponse = $key.KeyChar
-                    # Log response for transcript
-                    Write-Host "`nUser selected: $userResponse to skip Bitlocker configuration."
-                    break
-                }
-            } elseif ((Get-Date) -ge $endTime) {
-                # Log timeout for transcript
-                #Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
-                #Write-Host " done." -ForegroundColor Green
-                
-                # For visual appearance
-                Write-Host "`nNo response received, skipping Bitlocker configuration..." -NoNewline
-                Write-Host -ForegroundColor Green " done."
-                $userResponse = 'y' # Assume 'yes' to skip if no response
-                break
-            }
-            Start-Sleep -Milliseconds 100
-        }
-
-        if ($userResponse -ine 'y') {
-            # Disable BitLocker
-            manage-bde -off $env:SystemDrive | Out-Null
-
-            # Monitor decryption progress
-            do {
-                $status = manage-bde -status $env:SystemDrive
-                $percentageEncrypted = ($status | Select-String -Pattern "Percentage Encrypted:.*").ToString().Split(":")[1].Trim()
-                Write-Host "`rCurrent decryption progress: $percentageEncrypted" -NoNewline
-                Start-Sleep -Seconds 1
-            } until ($percentageEncrypted -eq "0.0%")
-            Write-Host "`nDecryption of $env:SystemDrive is complete."
-            # Reconfigure BitLocker
-            Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$false
-            Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -WarningAction SilentlyContinue | Out-Null
-            Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -WarningAction SilentlyContinue | Out-Null
-            Start-Process 'manage-bde.exe' -ArgumentList " -on $env:SystemDrive -UsedSpaceOnly" -Verb runas -Wait | Out-Null
-            Write-Host " done." -ForegroundColor Green
-            # Verify volume key protector exists
-            $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
-            if ($BitLockerVolume.KeyProtector) {
-                #Write-Host "Bitlocker disk encryption configured successfully."
-            } else {
-                Write-Host "Bitlocker disk encryption is not configured."
-            }
-        }
-    } else {
-        # Bitlocker is not configured
-        Write-Delayed "Configuring Bitlocker Disk Encryption..." -NewLine:$false
-        
-        # Initialize spinner
-        $spinner = @('/', '-', '\', '|')
-        $spinnerIndex = 0
-        
-        # Create the recovery key
-        Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector -WarningAction SilentlyContinue | Out-Null
-        
-        # Start showing spinner
-        [Console]::Write($spinner[$spinnerIndex])
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        
-        # Add TPM key
-        Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -TpmProtector -WarningAction SilentlyContinue | Out-Null
-        
-        # Update spinner
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        [Console]::Write($spinner[$spinnerIndex])
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        
-        # Wait for the protectors to take effect
-        Start-Sleep -Seconds 5
-        
-        # Update spinner
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        [Console]::Write($spinner[$spinnerIndex])
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        
-        # Enable Encryption
-        $encryptionProcess = Start-Process 'manage-bde.exe' -ArgumentList "-on $env:SystemDrive -UsedSpaceOnly" -Verb runas -PassThru -Wait
-        
-        # Update spinner during encryption wait
-        for ($i = 0; $i -lt 10; $i++) {
-            [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-            [Console]::Write($spinner[$spinnerIndex])
-            $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-            Start-Sleep -Milliseconds 100
-        }
-        
-        # Backup the Recovery to AD
-        $RecoveryKeyGUID = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | 
-                            Where-Object {$_.KeyProtectortype -eq 'RecoveryPassword'} | 
-                            Select-Object -ExpandProperty KeyProtectorID
-        
-        # Update spinner
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        [Console]::Write($spinner[$spinnerIndex])
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        
-        # Try AD backup (may fail in non-domain environments)
-        try {
-            manage-bde.exe -protectors $env:SystemDrive -adbackup -id $RecoveryKeyGUID | Out-Null
-        }
-        catch {
-            Write-Log "Failed to backup BitLocker recovery key to AD: $_"
-        }
-        
-        # Write Recovery Key to a file
-        manage-bde -protectors C: -get | Out-File "$outputDirectory\$env:computername-BitLocker.txt"
-        
-        # Verify volume key protector exists
-        $BitLockerVolume = Get-BitLockerVolume -MountPoint $env:SystemDrive
-        
-        # Replace spinner with done message
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        # Use Write-Host instead of Console method to ensure proper transcript logging
-        Write-Host " done." -ForegroundColor Green
-        
-        if ($BitLockerVolume.KeyProtector) {
-            # Get recovery information
-            $recoveryId = $BitLockerVolume.KeyProtector | 
-                Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | 
-                ForEach-Object { $_.KeyProtectorId.Trim('{', '}') }
-            
-            $recoveryPassword = $BitLockerVolume.KeyProtector | 
-                Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword' -and $_.KeyProtectorId -like "*"} | 
-                Select-Object -ExpandProperty RecoveryPassword
-            
-            # Display recovery info
-            Write-Delayed "Bitlocker has been successfully configured." -NewLine:$true
-            # Display recovery details
-            Write-Host -ForegroundColor Cyan "Recovery ID: $recoveryId"
-            Write-Host -ForegroundColor Cyan "Recovery Password: $recoveryPassword"
-            
-            # Log success
-            Write-Log "BitLocker encryption configured successfully with Recovery ID: $recoveryId"
-        } else {
-            Write-Host -ForegroundColor Red "Bitlocker disk encryption is not configured."
-            
-            # Log failure
-            Write-Log "Failed to configure BitLocker encryption"
-        }
-    }
-} else {
-    Write-Warning "Skipping Bitlocker Drive Encryption due to device not meeting hardware requirements."
-    Write-Log "Skipping Bitlocker Drive Encryption due to device not meeting hardware requirements."
-    Start-Sleep -Seconds 1
-}
-#endregion Bitlocker
-
-
-############################################################################################################
-#                                        System Restore Configuration                                      #
-#                                                                                                          #
-############################################################################################################
-#region System Restore
-Write-Delayed "Enabling System Restore..." -NewLine:$false
-
-# Set RestorePoint Creation Frequency to 0 (allow multiple restore points)
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "SystemRestorePointCreationFrequency" -Value 0 
-
-# Enable system restore
-Enable-ComputerRestore -Drive "C:\" -Confirm:$false
-Write-TaskComplete
-Write-Log "System Restore Enabled"
-#endregion SystemRestore
-
-
-############################################################################################################
-#                                        Offline Files Configuration                                       #
-#                                                                                                          #
-############################################################################################################
-#region Offline Files
-Write-Delayed "Disabling Offline File Sync..." -NewLine:$false
-
-# Set registry path for Offline Files
-$registryPath = "HKLM:\System\CurrentControlSet\Services\CSC\Parameters"
-
-# Check if the registry path exists, if not, create it
-if (-not (Test-Path -Path $registryPath)) {
-    New-Item -Path $registryPath -Force *> $null
-}
-
-# Disable Offline Files by setting Start value to 4
-Set-ItemProperty -Path $registryPath -Name "Start" -Value 4 *> $null
-Write-TaskComplete
-Write-Log "Offline file sync disabled"
-#endregion OfflineFiles
-
-
-############################################################################################################
-#                                   Profile Customization and Privacy Settings                             #
-#                                                                                                          #
-############################################################################################################
-#region Profile Config
-# Get all user SIDs for registry modifications
-$UserSIDs = @()
-Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | 
-    Where-Object {$_.PSChildName -match "S-1-5-21-(\d+-){4}$"} |
-    Select-Object @{Name="SID"; Expression={$_.PSChildName}} |
-    ForEach-Object {$UserSIDs += $_.SID}
-
-# Disable Windows Feedback Experience
-Write-Delayed "Disabling Windows Feedback Experience program..." -NewLine:$false
-$Advertising = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo"
-if (!(Test-Path $Advertising)) {
-    New-Item $Advertising | Out-Null
-}
-if (Test-Path $Advertising) {
-    Set-ItemProperty $Advertising Enabled -Value 0
-    Write-TaskComplete
-    Write-Log "Windows Feedback Experience disabled"
-}
-
-# Disable Cortana in Windows Search
-Write-Delayed "Preventing Cortana from being used in Windows Search..." -NewLine:$false
-$Search = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search"
-if (!(Test-Path $Search)) {
-    New-Item $Search -Force | Out-Null
-}
-if (Test-Path $Search) {
-    Set-ItemProperty $Search AllowCortana -Value 0
-    Write-TaskComplete
-    Write-Log "Cortana disabled in Windows Search"
-}
-
-# Disable Bing Search in Start Menu
-Write-Delayed "Disabling Bing Search in Start Menu..." -NewLine:$false
-$WebSearch = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search"
-if (!(Test-Path $WebSearch)) {
-    New-Item $WebSearch -Force | Out-Null
-}
-Set-ItemProperty $WebSearch DisableWebSearch -Value 1
-Set-ItemProperty "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" BingSearchEnabled -Value 0 -ErrorAction SilentlyContinue
-Write-TaskComplete
-Write-Log "Bing Search disabled in Start Menu"
-
-# Disable Mixed Reality Portal
-Write-Delayed "Disabling Mixed Reality Portal..." -NewLine:$false
-$Holo = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic"    
-if (Test-Path $Holo) {
-    Set-ItemProperty $Holo FirstRunSucceeded -Value 0 -ErrorAction SilentlyContinue
-}
-if (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic")) {
-    New-Item "HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic" -Force | Out-Null
-}
-Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic" FirstRunSucceeded -Value 0 -ErrorAction SilentlyContinue
-Write-TaskComplete
-Write-Log "Mixed Reality Portal disabled"
-
-# Disable Wi-Fi Sense
-Write-Delayed "Disabling Wi-Fi Sense..." -NewLine:$false
-$WifiSense1 = "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting"
-$WifiSense2 = "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots"
-$WifiSense3 = "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config"
-
-if (!(Test-Path $WifiSense1)) {
-    New-Item $WifiSense1 -Force | Out-Null
-}
-Set-ItemProperty $WifiSense1 Value -Value 0 
-
-if (!(Test-Path $WifiSense2)) {
-    New-Item $WifiSense2 -Force | Out-Null
-}
-Set-ItemProperty $WifiSense2 Value -Value 0 
-
-if (!(Test-Path $WifiSense3)) {
-    New-Item $WifiSense3 -Force | Out-Null
-}
-Set-ItemProperty $WifiSense3 AutoConnectAllowedOEM -Value 0 
-Write-TaskComplete
-Write-Log "Wi-Fi Sense disabled"
-
-# Disable Live Tiles
-Write-Delayed "Disabling live tiles..." -NewLine:$false
-$Live = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications"    
-if (!(Test-Path $Live)) {      
-    New-Item $Live -Force | Out-Null
-}  
-if (Test-Path $Live) {
-    Set-ItemProperty $Live NoTileApplicationNotification -Value 1 -ErrorAction SilentlyContinue
-}
-Write-TaskComplete
-Write-Log "Live tiles disabled"
-
-# Disable People icon on Taskbar
-Write-Delayed "Disabling People icon on Taskbar..." -NewLine:$false
-$People = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People'
-if (Test-Path $People) {
-    Set-ItemProperty $People PeopleBand -Value 0 -ErrorAction SilentlyContinue
-}
-Write-TaskComplete
-Write-Log "People icon disabled on Taskbar"
-
-# Disable Cortana
-Write-Delayed "Disabling Cortana..." -NewLine:$false
-$Cortana1 = "HKCU:\SOFTWARE\Microsoft\Personalization\Settings"
-$Cortana2 = "HKCU:\SOFTWARE\Microsoft\InputPersonalization"
-$Cortana3 = "HKCU:\SOFTWARE\Microsoft\InputPersonalization\TrainedDataStore"
-
-if (!(Test-Path $Cortana1)) {
-    New-Item $Cortana1 -Force | Out-Null
-}
-Set-ItemProperty $Cortana1 AcceptedPrivacyPolicy -Value 0 
-
-if (!(Test-Path $Cortana2)) {
-    New-Item $Cortana2 -Force | Out-Null
-}
-Set-ItemProperty $Cortana2 RestrictImplicitTextCollection -Value 1 
-Set-ItemProperty $Cortana2 RestrictImplicitInkCollection -Value 1 
-
-if (!(Test-Path $Cortana3)) {
-    New-Item $Cortana3 -Force | Out-Null
-}
-Set-ItemProperty $Cortana3 HarvestContacts -Value 0
-
-# Apply to all user profiles
-foreach ($sid in $UserSIDs) {
-    $Cortana1 = "Registry::HKU\$sid\SOFTWARE\Microsoft\Personalization\Settings"
-    $Cortana2 = "Registry::HKU\$sid\SOFTWARE\Microsoft\InputPersonalization"
-    $Cortana3 = "Registry::HKU\$sid\SOFTWARE\Microsoft\InputPersonalization\TrainedDataStore"
-    
-    if (!(Test-Path $Cortana1)) {
-        New-Item $Cortana1 -Force | Out-Null
-    }
-    Set-ItemProperty $Cortana1 AcceptedPrivacyPolicy -Value 0 -ErrorAction SilentlyContinue
-    
-    if (!(Test-Path $Cortana2)) {
-        New-Item $Cortana2 -Force | Out-Null
-    }
-    Set-ItemProperty $Cortana2 RestrictImplicitTextCollection -Value 1 -ErrorAction SilentlyContinue
-    Set-ItemProperty $Cortana2 RestrictImplicitInkCollection -Value 1 -ErrorAction SilentlyContinue
-    
-    if (!(Test-Path $Cortana3)) {
-        New-Item $Cortana3 -Force | Out-Null
-    }
-    Set-ItemProperty $Cortana3 HarvestContacts -Value 0 -ErrorAction SilentlyContinue
-}
-Write-TaskComplete
-Write-Log "Cortana disabled"
-
-# Remove 3D Objects from 'My Computer'
-Write-Delayed "Removing 3D Objects from explorer 'My Computer' submenu..." -NewLine:$false
-$Objects32 = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{0DB7E03F-FC29-4DC6-9020-FF41B59E513A}"
-$Objects64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{0DB7E03F-FC29-4DC6-9020-FF41B59E513A}"
-
-if (Test-Path $Objects32) {
-    Remove-Item $Objects32 -Recurse -Force
-}
-if (Test-Path $Objects64) {
-    Remove-Item $Objects64 -Recurse -Force
-}
-Write-TaskComplete
-Write-Log "3D Objects removed from explorer 'My Computer' submenu"
-
-# Remove Microsoft Feeds
-Write-Delayed "Removing Microsoft Feeds..." -NewLine:$false
-$registryPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds"
-$Name = "EnableFeeds"
-$value = "0"
-
-if (!(Test-Path $registryPath)) {
-    New-Item -Path $registryPath -Force | Out-Null
-}
-New-ItemProperty -Path $registryPath -Name $name -Value $value -PropertyType DWORD -Force | Out-Null
-Write-TaskComplete
-Write-Log "Microsoft Feeds removed"
-
-# Disable Scheduled Tasks
-Write-Delayed "Disabling scheduled tasks..." -NewLine:$false
-
-# Initialize spinner
-$spinner = @('/', '-', '\', '|')
-$spinnerIndex = 0
-[Console]::Write($spinner[$spinnerIndex])
-
-$taskList = @(
-    'XblGameSaveTaskLogon',
-    'XblGameSaveTask',
-    'Consolidator',
-    'UsbCeip',
-    'DmClient',
-    'DmClientOnScenarioDownload'
-)
-
-foreach ($task in $taskList) {
-    # Update spinner before checking each task
-    [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-    $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-    [Console]::Write($spinner[$spinnerIndex])
-    
-    $scheduledTask = Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue 
-    if ($null -ne $scheduledTask) {
-        # Update spinner before disabling task
-        [Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-        $spinnerIndex = ($spinnerIndex + 1) % $spinner.Length
-        [Console]::Write($spinner[$spinnerIndex])
-        
-        Disable-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue | Out-Null
-    }
-    
-    # Small delay for visual effect
-    Start-Sleep -Milliseconds 100
-}
-
-# Replace spinner with done message
-[Console]::SetCursorPosition([Console]::CursorLeft - 1, [Console]::CursorTop)
-# Use Write-Host instead of Console methods
-Write-Host " done." -ForegroundColor Green
-
-Write-Log "Disabled unnecessary scheduled tasks"
-#endregion Profile Customization
-
-############################################################################################################
-#                                              Datto RMM Deployment                                        #
-#                                                                                                          #
-############################################################################################################
-#region RMM Install
-
-# Agent Installation Configuration
-$TempFolder = "c:\temp"
-$file = "$TempFolder\AgentInstall.exe"
-
-$agentName = "CagService"
-$agentPath = "C:\Program Files (x86)\CentraStage"
-
-# Check for existing Datto RMM agent
-$installStatus = Test-DattoInstallation
-if ($installStatus.ServiceExists -and $installStatus.ServiceRunning) {
-    Write-Host "Datto RMM agent is already installed and running." -ForegroundColor Cyan
-    Write-Log "Datto RMM agent already installed and running"
-} else {
-    # Clean up any partial installations
-    if ($installStatus.FilesExist) {
-        Write-Host "Cleaning up partial installation..." -ForegroundColor Yellow
-        try {
-            # Stop service if it exists but not running
-            if ($installStatus.ServiceExists -and -not $installStatus.ServiceRunning) {
-                Stop-Service -Name $agentName -Force -ErrorAction SilentlyContinue
-                # Give it a moment to stop
-                Start-Sleep -Seconds 3
-            }
-            Remove-Item -Path $agentPath -Recurse -Force -ErrorAction Stop
-        } catch {
-            Write-Host "Warning: Could not fully clean up previous installation. Continuing anyway." -ForegroundColor Yellow
-            Write-Log "Warning: Could not fully clean up previous RMM installation: $($_.Exception.Message)"
-        }
-    }
-
-    # Download and install using spinner animation
-    Show-SpinnerWithProgressBar -Message "Downloading Datto RMM Agent..." -URL $DattoRMM -OutFile $file -DoneMessage " done."
-    
-    # Verify the file exists and has content
-    if ((Test-Path $file) -and (Get-Item $file).Length -gt 0) {
-        # Install with spinner animation
-        $fileToInstall = $file  # Create a copy of the path
-        $installResult = Show-SpinningWait -Message "Installing Datto RMM Agent..." -DoneMessage " done." -ScriptBlock {
-            param ($InstallerPath)  # Accept the file path as a parameter
-            
-            try {
-                Write-Output "Using installer file: $InstallerPath"  # Debug output
-                
-                # Verify file exists before attempting to run
-                if (!(Test-Path $InstallerPath)) {
-                    return @{
-                        Success = $false
-                        Error = "Installer file not found at path: $InstallerPath"
-                    }
-                }
-                
-                # Run installer
-                $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-                $startInfo.FileName = $InstallerPath
-                $startInfo.Arguments = "/S"
-                $startInfo.UseShellExecute = $true
-                $startInfo.Verb = "runas"  # Run as admin
-                
-                $process = [System.Diagnostics.Process]::Start($startInfo)
-                if ($null -eq $process) {
-                    throw "Failed to start installation process"
-                }
-                
-                $process.WaitForExit()
-                $exitCode = $process.ExitCode
-                
-                return @{
-                    Success = $exitCode -eq 0
-                    ExitCode = $exitCode
-                }
-            } catch {
-                return @{
-                    Success = $false
-                    Error = $_.Exception.Message
-                }
-            }
-        } -ArgumentList $fileToInstall -SuppressOutput
-        
-        if ($installResult.Success) {
-            # Wait for service initialization
-            Show-SpinningWait -Message "Waiting for service initialization..." -DoneMessage " done." -ScriptBlock {
-                Start-Sleep -Seconds 15
-            } -SuppressOutput
-            
-            # Check if the service exists and is running
-            $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
-            
-            if ($null -ne $service -and $service.Status -eq "Running") {
-                #Write-Host "Installation completed successfully! Service is running." -ForegroundColor Green
-                Write-Log "Datto RMM agent installed successfully"
-                # Clean up installer file
-                if (Test-Path $file) {
-                    Remove-Item -Path $file -Force
-                }
-            } else {
-                if ($null -ne $service) {
-                    Write-Host "Datto RMM Service exists but status is: $($service.Status)" -ForegroundColor Yellow
-                    Show-SpinningWait -Message "Attempting to start Datto RMM Service..." -DoneMessage " done." -ScriptBlock {
-                        Start-Service -Name $agentName -ErrorAction SilentlyContinue
-                        Start-Sleep -Seconds 5
-                    } -SuppressOutput
-                    
-                    $service = Get-Service -Name $agentName -ErrorAction SilentlyContinue
-                    if ($null -ne $service -and $service.Status -eq "Running") {
-                        Write-Log "Datto RMM service started manually after installation"
-                    } else {
-                        Write-Host "Failed to start Datto RMM service." -ForegroundColor Red
-                        Write-Log "Failed to start Datto RMM service after installation"
-                    }
-                } else {
-                    Write-Host "Datto RMM Service does not exist." -ForegroundColor Red
-                    Write-Log "Datto RMM service does not exist after installation"
-                }
-            }
-        } else {
-            Write-Host "Installation failed with exit code $($installResult.ExitCode)." -ForegroundColor Red
-            Write-Log "Datto RMM installation failed with exit code $($installResult.ExitCode)"
-            
-            if ($installResult.Error) {
-                Write-Host "Error: $($installResult.Error)" -ForegroundColor Red
-                Write-Log "Error during Datto RMM installation: $($installResult.Error)"
-            }
-            
-            $fileInfo = Get-Item $file -ErrorAction SilentlyContinue
-            if ($null -ne $fileInfo) {
-                Write-Host "File size: $($fileInfo.Length) bytes" -ForegroundColor Yellow
-                if ($fileInfo.Length -lt 1000) {
-                    Write-Host "File appears to be too small to be a valid installer!" -ForegroundColor Red
-                    Write-Log "Datto RMM installer file is too small to be valid: $($fileInfo.Length) bytes"
-                }
-            }
-        }
-    } else {
-        Write-Host "Error: Downloaded file is missing or empty." -ForegroundColor Red
-        Write-Log "Datto RMM installer file is missing or empty"
-    }
-}
-#endregion RMMDeployment
-
-
-############################################################################################################
-#                                          Office 365 Installation                                         #
-#                                                                                                          #
-############################################################################################################
-#region M365 Install
-
-# Install Office 365
-$O365 = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
-                             HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
-Where-Object { $_.DisplayName -like "*Microsoft 365 Apps for enterprise - en-us*" }
-
-if ($O365) {
-    Write-Host -ForegroundColor Cyan "Existing Microsoft Office installation found."
-    Write-Log "Existing Microsoft Office installation found."
-} else {
-    $OfficePath = "c:\temp\OfficeSetup.exe"
-    if (-not (Test-Path $OfficePath)) {
-        # $OfficeURL = Get-DecryptedURL -Key "OfficeURL" # REMOVED - Use variable loaded earlier
-        if ([string]::IsNullOrWhiteSpace($OfficeURL)) { throw "OfficeURL is not loaded." } # Added check
-        
-        # Use spinner with progress bar for download
-        Show-SpinnerWithProgressBar -Message "Downloading Microsoft Office 365..." -URL $OfficeURL -OutFile $OfficePath -DoneMessage " done."
-    }
-    
-    # Validate successful download by checking the file size
-    $FileSize = (Get-Item $OfficePath).Length
-    $ExpectedSize = 7733536 # in bytes
-    if ($FileSize -eq $ExpectedSize) {
-        # Kill any running Office processes
-        taskkill /f /im OfficeClickToRun.exe *> $null
-        taskkill /f /im OfficeC2RClient.exe *> $null
-        Start-Sleep -Seconds 10
-        
-        Show-SpinningWait -Message "Installing Microsoft Office 365..." -ScriptBlock {
-            Start-Process -FilePath "c:\temp\OfficeSetup.exe" -Wait
-            Start-Sleep -Seconds 15
-        } -DoneMessage " done."
-        
-        if (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "Microsoft 365 Apps for enterprise - en-us"}) {
-            Write-Log "Office 365 Installation Completed Successfully."
-            Start-Sleep -Seconds 10
-            taskkill /f /im OfficeClickToRun.exe *> $null
-            taskkill /f /im OfficeC2RClient.exe *> $null
-            Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
-        } else {
-            Write-Host -ForegroundColor Red "Microsoft Office 365 installation failed."
-            Write-Log "Office 365 installation failed."
-        }   
-    }
-    else {
-        # Report download error
-        Write-Log "Office download failed!"
-        Write-Host -ForegroundColor Red "Download failed or file size does not match."
-        Start-Sleep -Seconds 10
-        Remove-Item -Path $OfficePath -force -ErrorAction SilentlyContinue
-    }
-} 
-#endregion M365 Install
-
-
-############################################################################################################
-#                                        Adobe Acrobat Installation                                        #
-#                                                                                                          #
-############################################################################################################
-#region Acrobat Install
-
-# URL and file path for the Acrobat Reader installer
-$AcroFilePath = "C:\temp\AcroRdrDC2500120432_en_US.exe"
-# Use variable loaded earlier for Adobe URL
-# $URL = Get-DecryptedURL -Key "AcrobatURL" # REMOVED
-if ([string]::IsNullOrWhiteSpace($AdobeURL)) { throw "AdobeURL is not loaded." } # Added check
-
-# First, check if Adobe Acrobat Reader is already installed
-$acrobatPath = "${env:ProgramFiles(x86)}\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe"
-$acrobatInstalled = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
-                                      HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
-                     Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
-
-if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
-    Write-Host "Existing Adobe Acrobat Reader installation found." -ForegroundColor Cyan
-    Write-Log "Adobe Acrobat Reader already installed, skipped installation."
-} else {
-    # Create temp directory if it doesn't exist
-    if (-not (Test-Path "C:\temp")) {
-        New-Item -Path "C:\temp" -ItemType Directory -Force | Out-Null
-    } 
-
-    try {
-        # Get the URL from encrypted file - REMOVED (already have $AdobeURL)
-        # $URL = Get-DecryptedURL -Key "AcrobatURL"
-        
-        # Get the file size first
-        $response = Invoke-WebRequest -Uri $AdobeURL -Method Head -ErrorAction Stop
-        $fileSize = $response.Headers['Content-Length']
-        
-        # Download the Acrobat Reader installer with spinner AND progress bar
-        Show-SpinnerWithProgressBar -Message "Downloading Adobe Acrobat Reader ($fileSize bytes)..." -URL $AdobeURL -OutFile $AcroFilePath -DoneMessage " done."
-        
-        $FileSize = (Get-Item $AcroFilePath).Length
-        
-        # Check if the file exists and has content
-        if ((Test-Path $AcroFilePath -PathType Leaf) -and ($FileSize -gt 0)) {
-            # Install Acrobat Reader with spinner
-            $installResult = Show-SpinningWait -Message "Installing Adobe Acrobat Reader..." -ScriptBlock {
-                # Start the installation process
-                $process = Start-Process -FilePath "C:\temp\AcroRdrDC2500120432_en_US.exe" -ArgumentList "/sAll /rs /msi EULA_ACCEPT=YES /qn" -NoNewWindow -PassThru
-                
-                # Wait for initial process to complete
-                $process | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
-                
-                # Look for Reader installer processes and wait
-                $timeout = 300  # 5 minutes timeout
-                $startTime = Get-Date
-                
-                do {
-                    Start-Sleep -Seconds 5
-                    $msiProcess = Get-Process -Name msiexec -ErrorAction SilentlyContinue
-                    $readerProcess = Get-Process -Name Reader_en_install -ErrorAction SilentlyContinue
-                    
-                    $elapsedTime = (Get-Date) - $startTime
-                    if ($elapsedTime.TotalSeconds -gt $timeout) {
-                        break
-                    }
-                } while ($msiProcess -or $readerProcess)
-                
-                # Try to gracefully close any remaining installer processes
-                Stop-Process -Name Reader_en_install -Force -ErrorAction SilentlyContinue
-            }
-            
-            # Verify installation
-            $acrobatPath = "${env:ProgramFiles(x86)}\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe"
-            $acrobatInstalled = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
-                                                HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
-                                 Where-Object { $_.DisplayName -like "*Adobe Acrobat Reader*" -or $_.DisplayName -like "*Adobe Acrobat DC*" }
-            
-            if ((Test-Path $acrobatPath) -and $acrobatInstalled) {
-                Write-Log "Adobe Acrobat Reader installed successfully"
-            } else {
-                if (-not (Test-Path $acrobatPath)) {
-                    Write-Host "Adobe Acrobat Reader executable not found" -ForegroundColor Yellow
-                }
-                if (-not $acrobatInstalled) {
-                    Write-Host "Adobe Acrobat Reader not found in installed applications registry" -ForegroundColor Yellow
-                }
-                Write-Host "Adobe Acrobat Reader installation may not have completed properly" -ForegroundColor Yellow
-                Write-Log "Adobe Acrobat Reader installation may not have completed properly"
-            }
-        } else {
-            Write-Host "Download failed or file is empty" -ForegroundColor Red
-            Write-Log "Adobe Acrobat Reader download failed or file is empty"
-        }
-    } catch {
-        Write-Host "Error: $_" -ForegroundColor Red
-        Write-Log "Error installing Adobe Acrobat Reader: $_"
-    } finally {
-        # Cleanup
-        if (Test-Path $AcroFilePath) {
-            Remove-Item -Path $AcroFilePath -Force -ErrorAction SilentlyContinue
-        }
-    }
-}
-#endregion Acrobat Installation
-
-
-############################################################################################################
-#                                           Sophos Installation                                           #
-#                                                                                                          #
-############################################################################################################
-#region Sophos Install
-# Run the Sophos installation script and wait for it to complete before continuing
-$ProgressPreference = "SilentlyContinue"
-#Invoke-WebRequest -Uri "https://axcientrestore.blob.core.windows.net/win11/SEPLinks.enc" -OutFile "c:\temp\SEPLinks.enc" | Out-Null
-$sophosScript = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mitsdev01/SOS/refs/heads/main/Deploy-SophosAV.ps1" -UseBasicParsing).Content
-$sophosJob = Start-Job -ScriptBlock { 
-    param($scriptContent)
-    Invoke-Expression $scriptContent
-} -ArgumentList $sophosScript
 
 # Wait for the Sophos installation to complete
 Write-Delayed "Installing Sophos AV..." -NewLine:$false
@@ -2339,7 +1604,7 @@ if ($success) {
 ############################################################################################################
 #region Bloatware Cleanup
 
-Write-Delayed "Initiating cleaning up of Windows bloatware..." -NewLine:$false
+Write-Delayed "Initiating cleaning up of Windows bloatware... " -NoNewline -NewLine:$false
 
 # Use variables loaded earlier
 if ([string]::IsNullOrWhiteSpace($Win11DebloatURL)) { throw "Win11DebloatURL is not loaded." }
@@ -2358,9 +1623,23 @@ if (Is-Windows11) {
         Start-Sleep -Seconds 2
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.SendKeys]::SendWait('%{TAB}') 
-        Start-Sleep -Seconds 30
+        
+        # Display spinning character for 30 seconds
+        $spinner = @('|', '/', '-', '\')
+        $spinnerPos = 0
+        $endTime = (Get-Date).AddSeconds(35)
+        $message = "Initiating cleaning up of Windows bloatware..."
+        
+        while ((Get-Date) -lt $endTime) {
+            Write-Host "`r$message$($spinner[$spinnerPos])" -NoNewline
+            $spinnerPos = ($spinnerPos + 1) % $spinner.Length
+            Start-Sleep -Milliseconds 100
+        }
+        Write-Host "`r$message" -NoNewline 
+        # Clear the spinner and show completion
+        Write-Host " done." -ForegroundColor Green # Clear the spinner and show completion
         Write-Log "Windows 11 Debloat completed successfully."
-        Write-TaskComplete
+        #Write-TaskComplete
     }
     catch {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
@@ -2383,9 +1662,22 @@ if (Is-Windows10) {
         Start-Sleep -Seconds 2
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.SendKeys]::SendWait('%{TAB}')
-        Start-Sleep -Seconds 30
+        
+        # Display spinning character for 30 seconds
+        $spinner = @('|', '/', '-', '\')
+        $spinnerPos = 0
+        $endTime = (Get-Date).AddSeconds(30)
+        $message = "Initiating cleaning up of Windows bloatware..."
+        
+        while ((Get-Date) -lt $endTime) {
+            Write-Host "`r$message $($spinner[$spinnerPos])" -NoNewline
+            $spinnerPos = ($spinnerPos + 1) % $spinner.Length
+            Start-Sleep -Milliseconds 200
+        }
+        Write-Host "`r$message" -NoNewline
+        Write-Host " done." -ForegroundColor Green # Clear the spinner and show completion
         Write-Log "Windows 10 Debloat completed successfully."
-        Write-TaskComplete
+        #Write-TaskComplete
     }
     catch {
         Write-Error "An error occurred: $($Error[0].Exception.Message)"
@@ -2496,7 +1788,7 @@ if ($joinDomain -eq 'Y' -or $joinDomain -eq 'y') {
 
 
 ############################################################################################################
-#                                        Cleanup and Finalization                                        #
+#                                                   Finalization                                           #
 #                                                                                                          #
 ############################################################################################################
 #region Baseline Cleanup
@@ -2535,7 +1827,7 @@ if (Test-Path "c:\temp\update_windows.ps1") {
     Start-Sleep -seconds 3
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.SendKeys]::SendWait('%{TAB}')
-    Move-ProcessWindowToTopRight -processName "Windows PowerShell" | Out-Null
+    Move-ProcessWindowToTop -processName "Windows PowerShell" | Out-Null
     Start-Sleep -Seconds 1
     
     # Use a single Write-Host for both transcript and console display
@@ -2751,7 +2043,41 @@ else {
         Write-Log "Error in computer rename process: $_"
     }
 }
+#endregion Rename Machine
 
+
+############################################################################################################
+#                                           Baseline Summary                                               #
+#                                                                                                          #
+############################################################################################################
+#region Summary
+# Display Baseline Summary
+Write-Host ""
+$Padding = ("=" * [System.Console]::BufferWidth)
+# Visual formatting
+Write-Host -ForegroundColor "Green" $Padding
+Print-Middle "SOS Baseline Script Completed Successfully" "Green"
+Print-Middle "Reboot recommended to finalize changes" "Yellow"
+Write-Host -ForegroundColor "Green" $Padding
+
+# Visual formatting
+Write-Host -ForegroundColor "Cyan" "Logs are available at:"
+Write-Host "  * $LogFile"
+Write-Host "  * $TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
+# $BaselineCompleteURL = Get-DecryptedURL -Key "BaselineComplete" # REMOVED - Use variable loaded earlier
+if ([string]::IsNullOrWhiteSpace($BaselineCompleteURL)) { throw "BaselineCompleteURL is not loaded." } # Added check
+Invoke-WebRequest -uri $BaselineCompleteURL -OutFile "c:\temp\BaselineComplete.ps1"
+$scriptPath = "c:\temp\BaselineComplete.ps1"
+Invoke-Expression "start powershell -ArgumentList '-noexit','-File $scriptPath'"
+Write-Host " "
+Write-Host " "
+#endregion Summary
+
+############################################################################################################
+#                                           Cleanup Temporary Files                                           #
+#                                                                                                          #
+############################################################################################################
+#region Cleanup Temporary Files
 
 # Define temp files to clean up
 $TempFiles = @(
@@ -2764,7 +2090,9 @@ $TempFiles = @(
     "c:\temp\$env:COMPUTERNAME-baseline.txt",
     "c:\temp\sos-rename-complete.flag",
     "c:\temp\SEPLinks.enc",
-    "C:\temp\urls.enc"
+    "C:\temp\urls.enc",
+    "C:\temp\Wakelock.ps1",
+    "C:\temp\wakelock.flag"
 )
 
 Write-Delayed "Cleaning up temporary files..." -NewLine:$false
@@ -2806,35 +2134,7 @@ if ($allSuccessful) {
 Write-Log "Temporary file cleanup completed successfully."
 #endregion Baseline Cleanup
 
-############################################################################################################
-#                                           Baseline Summary                                               #
-#                                                                                                          #
-############################################################################################################
-#region Summary
-# Display Baseline Summary
-Write-Host ""
-$Padding = ("=" * [System.Console]::BufferWidth)
-# Visual formatting
-Write-Host -ForegroundColor "Green" $Padding
-Print-Middle "SOS Baseline Script Completed Successfully" "Green"
-Print-Middle "Reboot recommended to finalize changes" "Yellow"
-Write-Host -ForegroundColor "Green" $Padding
 
-# Visual formatting
-Write-Host -ForegroundColor "Cyan" "Logs are available at:"
-Write-Host "  * $LogFile"
-Write-Host "  * $TempFolder\$env:COMPUTERNAME-baseline_transcript.txt"
-# $BaselineCompleteURL = Get-DecryptedURL -Key "BaselineComplete" # REMOVED - Use variable loaded earlier
-if ([string]::IsNullOrWhiteSpace($BaselineCompleteURL)) { throw "BaselineCompleteURL is not loaded." } # Added check
-Invoke-WebRequest -uri $BaselineCompleteURL -OutFile "c:\temp\BaselineComplete.ps1"
-$scriptPath = "c:\temp\BaselineComplete.ps1"
-Invoke-Expression "start powershell -ArgumentList '-noexit','-File $scriptPath'"
-Write-Host " "
-Write-Host " "
-#endregion Summary
-
-# Stopping transcript
-Stop-Transcript *> $null
 
 # Update log file with completion
 Write-Log "Automated workstation baseline has completed successfully"
@@ -2849,10 +2149,15 @@ $footerBorder
 "@
 Add-Content -Path $LogFile -Value $footer
 
-Read-Host -Prompt "Press enter to exit"
-Clear-HostFancily -Mode Falling -Speed 3.0
-Stop-Process -Id $PID -Force
+# Stopping transcript
+Stop-Transcript *> $null
 
-# Cleanup section
-Remove-item -path "C:\temp\SEPLinks.enc" -ErrorAction SilentlyContinue | Out-Null
-$ProgressPreference = "Continue"
+try {
+    Read-Host -Prompt "Press enter to exit"
+    Clear-HostFancily -Mode Falling -Speed 3.4
+    Stop-Process -Id $PID -Force
+}
+catch {
+    Write-Host "Error during cleanup: $_" -ForegroundColor Red
+    exit 1
+}
