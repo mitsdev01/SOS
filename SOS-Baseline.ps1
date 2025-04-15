@@ -1106,19 +1106,11 @@ if ($args -contains "-Command" -and $args -contains "Update-ScriptHash") {
         function Get-StandardizedFileHash {
             param (
                 [Parameter(Mandatory = $true)]
-                [string]$FilePath,
-                [switch]$ExcludeHashLine
+                [string]$FilePath
             )
             
             # Read file with UTF8 encoding without BOM
             $content = [System.IO.File]::ReadAllText($FilePath, [System.Text.Encoding]::UTF8)
-            
-            # If we need to exclude the hash line, do it with a consistent regex pattern
-            if ($ExcludeHashLine) {
-                $contentLines = $content -split "`n"
-                $contentLines = $contentLines | Where-Object { $_ -notmatch '\$validScriptHash\s*=\s*"[A-F0-9]+"' }
-                $content = $contentLines -join "`n"
-            }
             
             # Normalize all line endings to LF only
             $content = $content.Replace("`r`n", "`n").Replace("`r", "`n")
@@ -1137,17 +1129,9 @@ if ($args -contains "-Command" -and $args -contains "Update-ScriptHash") {
         }
         
         # Calculate hash using our standardized function
-        $newHash = Get-StandardizedFileHash -FilePath $scriptPath -ExcludeHashLine
+        $newHash = Get-StandardizedFileHash -FilePath $scriptPath
         
         Write-Host "New hash calculated: $newHash" -ForegroundColor Yellow
-        
-        # Read the entire file content
-        $allContent = Get-Content -Path $scriptPath -Raw
-        
-        # Update hash in script file (for fallback/offline verification)
-        $updatedContent = $allContent -replace '\$validScriptHash\s*=\s*"[A-F0-9]+"', "`$validScriptHash = `"$newHash`""
-        [System.IO.File]::WriteAllText($scriptPath, $updatedContent, [System.Text.Encoding]::UTF8)
-        Write-Host "Local script hash updated successfully!" -ForegroundColor Green
         
         # Create a hash file for manual upload to Azure Blob Storage
         $hashFilePath = "$PSScriptRoot\SOS-Baseline.hash"
@@ -1170,26 +1154,15 @@ param(
     [string]$ScriptPath
 )
 
-# Script integrity verification - fallback local hash
-$validScriptHash = "76DE47E966AF115B6F6F69566BC1A9DF56F2954933DA10B48F40B39DACDAF931"
-
 # Define the standardized hash calculation function again for verification
 function Get-StandardizedFileHash {
     param (
         [Parameter(Mandatory = $true)]
-        [string]$FilePath,
-        [switch]$ExcludeHashLine
+        [string]$FilePath
     )
     
     # Read file with UTF8 encoding without BOM
     $content = [System.IO.File]::ReadAllText($FilePath, [System.Text.Encoding]::UTF8)
-    
-    # If we need to exclude the hash line, do it with a consistent regex pattern
-    if ($ExcludeHashLine) {
-        $contentLines = $content -split "`n"
-        $contentLines = $contentLines | Where-Object { $_ -notmatch '\$validScriptHash\s*=\s*"[A-F0-9]+"' }
-        $content = $contentLines -join "`n"
-    }
     
     # Normalize all line endings to LF only
     $content = $content.Replace("`r`n", "`n").Replace("`r", "`n")
@@ -1211,83 +1184,66 @@ function Test-ScriptIntegrity {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true)]
-        [string]$ScriptPath,
-        [switch]$SkipRemoteCheck
+        [string]$ScriptPath
     )
 
     try {
-        # First try to get the hash from Azure Blob Storage unless skipRemoteCheck is specified
-        $remoteHashValid = $false
-        $remoteHash = $null
-        
-        if (-not $SkipRemoteCheck) {
-            try {
-                # Download the hash file from Azure
-                $hashFileUrl = "https://axcientrestore.blob.core.windows.net/win11/SOS-Baseline.hash"
-                $tempHashFile = [System.IO.Path]::GetTempFileName()
+        # Get the hash from Azure Blob Storage
+        try {
+            # Download the hash file from Azure
+            $hashFileUrl = "https://axcientrestore.blob.core.windows.net/win11/SOS-Baseline.hash"
+            $tempHashFile = [System.IO.Path]::GetTempFileName()
+            
+            Write-Host "Checking integrity against remote hash..." -ForegroundColor Cyan
+            Invoke-WebRequest -Uri $hashFileUrl -OutFile $tempHashFile -UseBasicParsing -TimeoutSec 15
+            
+            if (Test-Path $tempHashFile) {
+                # Read without adding a newline
+                $remoteHash = [System.IO.File]::ReadAllText($tempHashFile).Trim()
                 
-                Write-Host "Checking integrity against remote hash..." -ForegroundColor Cyan
-                Invoke-WebRequest -Uri $hashFileUrl -OutFile $tempHashFile -UseBasicParsing -TimeoutSec 15
-                
-                if (Test-Path $tempHashFile) {
-                    # Read without adding a newline
-                    $remoteHash = [System.IO.File]::ReadAllText($tempHashFile).Trim()
-                    
-                    if (-not [string]::IsNullOrWhiteSpace($remoteHash)) {
-                        $remoteHashValid = $true
-                        Write-Host "Retrieved remote hash: $remoteHash" -ForegroundColor Gray
-                    }
+                if ([string]::IsNullOrWhiteSpace($remoteHash)) {
+                    Write-Host "`r`nERROR: Retrieved remote hash is empty!" -ForegroundColor Red
+                    Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
                     
                     # Clean up temp file
                     Remove-Item -Path $tempHashFile -Force
+                    return $false
                 }
+                
+                Write-Host "Retrieved remote hash: $remoteHash" -ForegroundColor Gray
+                
+                # Clean up temp file
+                Remove-Item -Path $tempHashFile -Force
+            } else {
+                Write-Host "`r`nERROR: Failed to download remote hash file!" -ForegroundColor Red
+                Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
+                return $false
             }
-            catch {
-                Write-Host "Could not retrieve remote hash, falling back to local validation: $_" -ForegroundColor Yellow
-                $remoteHashValid = $false
-            }
+        }
+        catch {
+            Write-Host "`r`nERROR: Could not retrieve remote hash: $_" -ForegroundColor Red
+            Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
+            return $false
         }
         
         # Use our standardized hash calculation
-        $currentHash = Get-StandardizedFileHash -FilePath $ScriptPath -ExcludeHashLine
-
-        # Get the stored local hash (excluding quotes) for fallback
-        $storedHash = $validScriptHash
+        $currentHash = Get-StandardizedFileHash -FilePath $ScriptPath
 
         # Debug output to help diagnose issues
         Write-Host "Calculated current hash: $currentHash" -ForegroundColor Gray
 
-        # Check against remote hash first if available
-        if ($remoteHashValid) {
-            if ($currentHash -ne $remoteHash) {
-                Write-Host "`r`nWARNING: Script integrity check failed against remote hash!" -ForegroundColor Red
-                Write-Host "The script appears to have been modified from its original state." -ForegroundColor Red
-                Write-Host "Expected hash (remote): $remoteHash" -ForegroundColor Yellow
-                Write-Host "Current hash:           $currentHash" -ForegroundColor Yellow
-                Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
-                return $false
-            }
-            Write-Host "Script integrity verified against remote hash." -ForegroundColor Green
-            return $true
+        # Check against remote hash
+        if ($currentHash -ne $remoteHash) {
+            Write-Host "`r`nWARNING: Script integrity check failed against remote hash!" -ForegroundColor Red
+            Write-Host "The script appears to have been modified from its original state." -ForegroundColor Red
+            Write-Host "Expected hash (remote): $remoteHash" -ForegroundColor Yellow
+            Write-Host "Current hash:           $currentHash" -ForegroundColor Yellow
+            Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
+            return $false
         }
-        # Fallback to local hash check
-        else {
-            if ($storedHash -eq "PLACEHOLDER_HASH") {
-                Write-Host "`r`nScript hash not initialized. Please run Update-ScriptHash to set the initial hash." -ForegroundColor Red
-                return $false
-            }
-
-            if ($currentHash -ne $storedHash) {
-                Write-Host "`r`nWARNING: Script integrity check failed!" -ForegroundColor Red
-                Write-Host "The script appears to have been modified from its original state." -ForegroundColor Red
-                Write-Host "Expected hash (local): $storedHash" -ForegroundColor Yellow
-                Write-Host "Current hash:          $currentHash" -ForegroundColor Yellow
-                Write-Host "`r`nExiting for security...`r`n" -ForegroundColor Red
-                return $false
-            }
-            Write-Host "Script integrity verified against local hash." -ForegroundColor Green
-            return $true
-        }
+        
+        Write-Host "Script integrity verified against remote hash." -ForegroundColor Green
+        return $true
     }
     catch {
         Write-Host "`r`nError during integrity check: $_" -ForegroundColor Red
