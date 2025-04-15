@@ -2855,4 +2855,4 @@ Stop-Process -Id $PID -Force
 
 # Cleanup section
 Remove-item -path "C:\temp\SEPLinks.enc" -ErrorAction SilentlyContinue | Out-Null
-$ProgressPreference = "Continue"1
+$ProgressPreference = "Continue"
